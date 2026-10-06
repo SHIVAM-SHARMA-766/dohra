@@ -11,6 +11,8 @@ export interface StartOptions {
   mode: Mode;
   quality: Quality;
   mic: boolean;
+  /** e.g. "dohra-extension/0.1.0". Offscreen documents cannot read the manifest themselves. */
+  recorder: string;
 }
 
 /** Popup (or keyboard shortcut) → background. */

@@ -127,7 +127,7 @@ async function start(streamId: string, options: StartOptions): Promise<void> {
       quality: video ? options.quality : null,
       mic: options.mic,
       mimeType,
-      recorder: `dohra-extension/${chrome.runtime.getManifest().version}`,
+      recorder: options.recorder,
       state: "recording",
       startedAt: now,
       endedAt: null,

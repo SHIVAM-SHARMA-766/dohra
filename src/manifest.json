@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "description": "Record a class or meeting in any browser tab — audio and video, saved on this computer only.",
   "minimum_chrome_version": "116",
-  "permissions": ["tabCapture", "offscreen", "storage", "unlimitedStorage", "downloads"],
+  "permissions": ["activeTab", "tabCapture", "offscreen", "storage", "unlimitedStorage", "downloads"],
   "background": {
     "service_worker": "background.js"
   },

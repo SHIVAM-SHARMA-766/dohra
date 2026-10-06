@@ -121,6 +121,7 @@ async function start(tabId: number, title: string): Promise<void> {
         mode: settings.mode,
         quality: settings.quality,
         mic: settings.mic,
+        recorder: `dohra-extension/${chrome.runtime.getManifest().version}`,
       },
     });
     await patchActive({ status: "recording" });
