@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # The end-to-end test needs Chromium, which (unlike branded Chrome) still loads
+      # unpacked extensions. xvfb-run is preinstalled on ubuntu runners.
+      - uses: browser-actions/setup-chrome@v1
+        id: chromium
+        with:
+          chrome-version: latest
+      - run: npm run e2e
+        env:
+          CHROME: ${{ steps.chromium.outputs.chrome-path }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-output
+          path: .e2e/downloads
+          retention-days: 7
