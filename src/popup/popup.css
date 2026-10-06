@@ -1,0 +1,118 @@
+body {
+  width: 320px;
+  padding: 14px 16px 16px;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.field > span {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmented label {
+  flex: 1;
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+}
+
+.segmented span {
+  display: block;
+  text-align: center;
+  padding: 7px 4px;
+  cursor: pointer;
+}
+
+.segmented input:checked + span {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.segmented input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  cursor: pointer;
+}
+
+#start {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.shortcut {
+  text-align: center;
+}
+
+.rec-title {
+  font-weight: 600;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rec-status {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
+.rec-status[data-status="recording"] {
+  color: var(--rec);
+  font-weight: 600;
+}
+
+.rec-status[data-status="recording"]::before {
+  content: "● ";
+}
+
+.timer {
+  font: 600 40px/1.1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  margin: 14px 0 2px;
+}
+
+#size {
+  text-align: center;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.row button {
+  flex: 1;
+}

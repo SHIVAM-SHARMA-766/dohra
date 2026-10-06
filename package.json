@@ -1,0 +1,29 @@
+{
+  "name": "dohra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Record browser classes and meetings locally — audio and video, nothing leaves the machine.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "test": "vitest run",
+    "e2e": "node scripts/e2e.mjs",
+    "icons": "sh scripts/icons.sh",
+    "package": "node scripts/build.mjs && node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.4",
+    "esbuild": "^0.28.2",
+    "puppeteer-core": "^24.43.1",
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0"
+  }
+}

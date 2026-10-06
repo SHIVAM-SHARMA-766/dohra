@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dohra Library</title>
+    <link rel="stylesheet" href="ui.css" />
+    <link rel="stylesheet" href="library.css" />
+  </head>
+  <body>
+    <header class="top">
+      <span class="brand"><span class="dot"></span>Dohra</span>
+      <span id="usage" class="hint"></span>
+    </header>
+
+    <main>
+      <p id="notice" class="banner warn" hidden></p>
+
+      <section id="player" hidden>
+        <div class="player-head">
+          <h2 id="player-title"></h2>
+          <button id="player-close" aria-label="Close player">Close</button>
+        </div>
+        <video id="media" controls preload="metadata"></video>
+      </section>
+
+      <div class="toolbar">
+        <h1>Recordings</h1>
+        <input id="search" type="text" placeholder="Search titles" aria-label="Search titles" />
+      </div>
+
+      <ul id="list" class="list"></ul>
+      <p id="empty" class="hint" hidden>
+        No recordings yet. Open a class in a tab, click the Dohra icon, and press Start.
+      </p>
+    </main>
+
+    <script src="library.js"></script>
+  </body>
+</html>

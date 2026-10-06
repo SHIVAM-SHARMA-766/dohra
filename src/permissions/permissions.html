@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dohra — Microphone</title>
+    <link rel="stylesheet" href="ui.css" />
+    <style>
+      main {
+        max-width: 520px;
+        margin: 64px auto;
+        padding: 0 16px;
+      }
+      #status {
+        font-weight: 600;
+      }
+      #status[data-state="granted"] {
+        color: var(--ok);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="brand"><span class="dot"></span>Dohra</p>
+      <h1>Allow the microphone</h1>
+      <p>
+        To include your own voice in recordings, Dohra needs microphone access. The browser only lets an
+        extension ask for this from a visible page, which is why this page exists. You need to do this once.
+      </p>
+      <p>Audio stays on this computer. Nothing is uploaded.</p>
+      <p><button id="allow" class="primary">Allow microphone</button></p>
+      <p id="status" role="status"></p>
+    </main>
+    <script src="permissions.js"></script>
+  </body>
+</html>

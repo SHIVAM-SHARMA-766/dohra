@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Dohra</title>
+    <link rel="stylesheet" href="ui.css" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <span class="brand"><span class="dot"></span>Dohra</span>
+      <a href="#" id="open-library">Library</a>
+    </header>
+
+    <p id="error" class="banner error" hidden></p>
+
+    <section id="idle" hidden>
+      <label class="field">
+        <span>Title</span>
+        <input id="title" type="text" maxlength="120" placeholder="e.g. DSA class — graphs" />
+      </label>
+
+      <div class="field">
+        <span>Record</span>
+        <div class="segmented" role="radiogroup">
+          <label><input type="radio" name="mode" value="video" /><span>Audio + video</span></label>
+          <label><input type="radio" name="mode" value="audio" /><span>Audio only</span></label>
+        </div>
+      </div>
+
+      <label class="field" id="quality-field">
+        <span>Quality</span>
+        <select id="quality">
+          <option value="480p">480p</option>
+          <option value="720p">720p</option>
+          <option value="1080p">1080p</option>
+        </select>
+      </label>
+
+      <label class="check">
+        <input id="mic" type="checkbox" />
+        <span>Include my microphone</span>
+      </label>
+      <p id="mic-help" class="hint" hidden>
+        Microphone access is needed once. <a href="#" id="allow-mic">Allow microphone</a>
+      </p>
+
+      <label class="check">
+        <input id="auto-export" type="checkbox" />
+        <span>Also save a copy to Downloads/Dohra</span>
+      </label>
+
+      <p id="estimate" class="hint"></p>
+      <button id="start" class="primary">Start recording</button>
+      <p class="hint shortcut">Shortcut: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> starts or stops</p>
+    </section>
+
+    <section id="recording" hidden>
+      <p id="rec-title" class="rec-title"></p>
+      <p id="rec-status" class="rec-status"></p>
+      <p id="timer" class="timer">00:00</p>
+      <p id="size" class="hint"></p>
+      <div class="row">
+        <button id="pause">Pause</button>
+        <button id="stop" class="danger">Stop</button>
+      </div>
+    </section>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,151 @@
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
+
+.toolbar h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.toolbar input {
+  max-width: 260px;
+}
+
+#player {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 20px;
+}
+
+.player-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.player-head h2 {
+  font-size: 16px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+#media {
+  width: 100%;
+  max-height: 70vh;
+  background: #000;
+  border-radius: 6px;
+}
+
+#media.audio-only {
+  height: 54px;
+  background: transparent;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.item .info {
+  min-width: 0;
+}
+
+.item .title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.item .meta {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.item .hash {
+  font: 12px ui-monospace, monospace;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.item .error-text {
+  color: var(--error-text);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.item .hint {
+  margin: 2px 0 0;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  vertical-align: 2px;
+}
+
+.tag.live {
+  background: var(--rec);
+  color: #fff;
+}
+
+.tag.warn {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.tag.bad {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+
+@media (max-width: 600px) {
+  .item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .actions {
+    flex-wrap: wrap;
+  }
+}
