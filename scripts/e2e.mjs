@@ -89,6 +89,8 @@ async function launch() {
       // A fake microphone. Not --use-fake-ui-for-media-stream: it breaks tab capture
       // ("Requested device not found"); the mic grant goes through the permissions API.
       "--use-fake-device-for-media-stream",
+      // GitHub's Ubuntu runners block the user namespaces Chromium's sandbox needs.
+      ...(process.env.CI ? ["--no-sandbox"] : []),
     ],
   });
   const id = await browser.installExtension(dist);
