@@ -1,9 +1,15 @@
-// Adds the Duration that MediaRecorder leaves out of WebM files.
+// Repairs the header of WebM files written by Chrome's MediaRecorder.
 //
-// MediaRecorder streams WebM, so it never goes back to write how long the recording was.
-// Without a Duration, players show no length and Chrome cannot seek. The fix only
-// touches the Segment's Info element near the start of the file, so this works on the
-// first few kilobytes; the caller copies the rest of the file through unchanged.
+// 1. Duration. MediaRecorder streams WebM, so it never goes back to write how long the
+//    recording was. Without a Duration, players show no length and Chrome cannot seek.
+// 2. AlphaMode. Chrome marks VP8 tracks as carrying transparency (AlphaMode = 1) even
+//    when they have none. Chrome ignores it, but GStreamer — and so GNOME Videos
+//    (Totem) on Linux — routes the stream to an alpha decoder that fails with "Cannot
+//    handle streams without an initial alpha buffer", reported to the user as a
+//    missing codec.
+//
+// Both live in the first few hundred bytes (Segment → Info, Segment → Tracks), so this
+// works on the start of the file; the caller copies the rest through unchanged.
 //
 // EBML basics: every element is [ID vint][size vint][data]. A vint's length is given by
 // the position of its first set bit. A size whose value bits are all ones means
@@ -17,6 +23,9 @@ const ID = {
   Duration: 0x4489,
   Cluster: 0x1f43b675,
   Tracks: 0x1654ae6b,
+  TrackEntry: 0xae,
+  Video: 0xe0,
+  AlphaMode: 0x53c0,
 } as const;
 
 const DEFAULT_TIMECODE_SCALE = 1_000_000; // nanoseconds per tick, i.e. 1 tick = 1 ms
@@ -178,6 +187,76 @@ export function patchDuration(head: Uint8Array, durationMs: number): PatchResult
     ]),
     consumed: infoEnd,
   };
+}
+
+/** Zeroes every Tracks → TrackEntry → Video → AlphaMode in `buf[start, end)`, in place. */
+function clearAlphaMode(buf: Uint8Array, start: number, end: number, depth = 0): number {
+  let cleared = 0;
+  for (let pos = start; pos < end; ) {
+    const e = readElement(buf, pos);
+    if (e.size === null) break;
+    if (depth === 0 && e.id === ID.TrackEntry) cleared += clearAlphaMode(buf, e.dataStart, e.dataStart + e.size, 1);
+    else if (depth === 1 && e.id === ID.Video) cleared += clearAlphaMode(buf, e.dataStart, e.dataStart + e.size, 2);
+    else if (depth === 2 && e.id === ID.AlphaMode && buf.subarray(e.dataStart, e.dataStart + e.size).some((b) => b !== 0)) {
+      buf.fill(0, e.dataStart, e.dataStart + e.size);
+      cleared++;
+    }
+    pos = e.dataStart + e.size;
+  }
+  return cleared;
+}
+
+/**
+ * Applies every header repair: Duration (see patchDuration) and AlphaMode. Same
+ * contract as patchDuration — the returned head replaces the first `consumed` bytes.
+ * `head` should hold the file up to the end of Tracks; if Tracks is cut off, only the
+ * Duration is fixed.
+ */
+export function repairHeader(head: Uint8Array, durationMs: number): PatchResult & { alphaCleared: number } {
+  const fixed = patchDuration(head, durationMs);
+
+  // Tracks follows Info, possibly after other top-level elements (SeekHead, Void).
+  for (let pos = fixed.consumed; pos < head.length; ) {
+    let e: Element;
+    try {
+      e = readElement(head, pos);
+    } catch {
+      break;
+    }
+    if (e.id === ID.Cluster || e.size === null) break;
+    const end = e.dataStart + e.size;
+    if (end > head.length) break;
+    if (e.id === ID.Tracks) {
+      const rest = head.slice(fixed.consumed, end);
+      const offset = e.dataStart - fixed.consumed;
+      const alphaCleared = clearAlphaMode(rest, offset, offset + e.size);
+      return { head: concat([fixed.head, rest]), consumed: end, alphaCleared };
+    }
+    pos = end;
+  }
+  return { ...fixed, alphaCleared: 0 };
+}
+
+/** Reads AlphaMode values back, one per video track. Used by tests. */
+export function readAlphaModes(head: Uint8Array): number[] {
+  const modes: number[] = [];
+  const walk = (start: number, end: number, depth: number) => {
+    for (let pos = start; pos < end; ) {
+      const e = readElement(head, pos);
+      if (e.size === null) return;
+      const next = e.dataStart + e.size;
+      if (depth === 0 && e.id === ID.Tracks) walk(e.dataStart, next, 1);
+      else if (depth === 1 && e.id === ID.TrackEntry) walk(e.dataStart, next, 2);
+      else if (depth === 2 && e.id === ID.Video) walk(e.dataStart, next, 3);
+      else if (depth === 3 && e.id === ID.AlphaMode) modes.push(readUint(head, e.dataStart, e.size));
+      if (depth === 0 && e.id === ID.Cluster) return;
+      pos = next;
+    }
+  };
+  const ebml = readElement(head, 0);
+  const segment = readElement(head, ebml.dataStart + ebml.size!);
+  walk(segment.dataStart, head.length, 0);
+  return modes;
 }
 
 /** Reads the Duration back, in milliseconds. Used by tests and by verification. */

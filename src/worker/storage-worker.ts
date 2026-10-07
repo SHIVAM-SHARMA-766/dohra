@@ -7,7 +7,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { FILES, SESSIONS_DIR, type SessionMeta } from "../lib/session";
-import { patchDuration } from "../lib/webm";
+import { repairHeader } from "../lib/webm";
 import type { WorkerRequest, WorkerResponse } from "./protocol";
 
 const HEAD_BYTES = 64 * 1024;
@@ -102,8 +102,8 @@ async function update(sessionId: string, patch: Partial<SessionMeta>): Promise<S
 }
 
 /**
- * Turns raw.webm into recording.webm: patches in the Duration, copies the rest across,
- * and hashes the result. Safe to re-run if interrupted, since raw.webm is only removed
+ * Turns raw.webm into recording.webm: repairs the header (Duration, AlphaMode), copies
+ * the rest across, and hashes the result. Safe to re-run if interrupted, since raw.webm is only removed
  * once recording.webm is complete. Works both right after recording and on a session
  * recovered after a crash.
  */
@@ -145,7 +145,7 @@ async function finalize(sessionId: string, patch: Partial<SessionMeta>): Promise
     let newHead: Uint8Array = new Uint8Array(0);
     let consumed = 0;
     try {
-      ({ head: newHead, consumed } = patchDuration(head, meta.durationMs));
+      ({ head: newHead, consumed } = repairHeader(head, meta.durationMs));
     } catch (e) {
       // Keep the recording even if the header cannot be patched; it still plays, it
       // just cannot be seeked in every player.

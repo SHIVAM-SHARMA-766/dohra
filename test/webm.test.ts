@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeSize, patchDuration, readDurationMs, WebmPatchError } from "../src/lib/webm";
+import { encodeSize, patchDuration, readAlphaModes, readDurationMs, repairHeader, WebmPatchError } from "../src/lib/webm";
 
 const bytes = (...parts: (number[] | Uint8Array)[]) =>
   Uint8Array.from(parts.flatMap((p) => Array.from(p)));
@@ -14,6 +14,9 @@ const ebmlHeader = el([0x1a, 0x45, 0xdf, 0xa3], el([0x42, 0x82], [...new TextEnc
 const muxingApp = el([0x4d, 0x80], [...new TextEncoder().encode("Chrome")]);
 const timecodeScale = el([0x2a, 0xd7, 0xb1], [0x0f, 0x42, 0x40]); // 1,000,000
 const tracks = el([0x16, 0x54, 0xae, 0x6b], [0xae, 0x80]);
+/** Chrome's VP8 track: TrackEntry → Video → { PixelWidth, PixelHeight, AlphaMode = 1 }. */
+const vp8Tracks = (alpha: number) =>
+  el([0x16, 0x54, 0xae, 0x6b], el([0xae], bytes(el([0xd7], [1]), el([0xe0], bytes(el([0xb0], [0x05, 0x00]), el([0xba], [0x02, 0xd0]), el([0x53, 0xc0], [alpha]))))));
 const cluster = bytes([0x1f, 0x43, 0xb6, 0x75], UNKNOWN_SEGMENT_SIZE, [0xe7, 0x81, 0x00]);
 
 /** Shaped like Chrome's MediaRecorder output: unknown Segment size, Info without Duration. */
@@ -104,5 +107,47 @@ describe("patchDuration", () => {
   it("rejects a head that stops inside Info", () => {
     const file = mediaRecorderFile();
     expect(() => patchDuration(file.slice(0, ebmlHeader.length + 14), 1)).toThrow(WebmPatchError);
+  });
+});
+
+describe("repairHeader", () => {
+  function chromeVideoFile(alpha = 1): Uint8Array {
+    const info = el([0x15, 0x49, 0xa9, 0x66], bytes(timecodeScale, muxingApp));
+    return bytes(ebmlHeader, [0x18, 0x53, 0x80, 0x67], UNKNOWN_SEGMENT_SIZE, info, vp8Tracks(alpha), cluster);
+  }
+
+  function apply(file: Uint8Array, durationMs: number) {
+    const r = repairHeader(file, durationMs);
+    return { file: bytes(r.head, file.slice(r.consumed)), cleared: r.alphaCleared };
+  }
+
+  it("clears Chrome's spurious AlphaMode and adds the Duration", () => {
+    const original = chromeVideoFile();
+    expect(readAlphaModes(original)).toEqual([1]);
+
+    const { file, cleared } = apply(original, 62_370);
+    expect(cleared).toBe(1);
+    expect(readAlphaModes(file)).toEqual([0]);
+    expect(readDurationMs(file)).toBeCloseTo(62_370, 3);
+    expect(file.length).toBe(original.length + 11); // AlphaMode is changed in place
+  });
+
+  it("leaves clusters untouched", () => {
+    const { file } = apply(chromeVideoFile(), 1000);
+    expect([...file.slice(file.length - cluster.length)]).toEqual([...cluster]);
+  });
+
+  it("does nothing more for audio-only files", () => {
+    const { file, cleared } = apply(mediaRecorderFile(), 1000);
+    expect(cleared).toBe(0);
+    expect(file.length).toBe(mediaRecorderFile().length + 11);
+  });
+
+  it("still fixes the Duration when Tracks is cut off", () => {
+    const original = chromeVideoFile();
+    const cut = original.slice(0, original.length - cluster.length - 4);
+    const r = repairHeader(cut, 500);
+    expect(r.alphaCleared).toBe(0);
+    expect(readDurationMs(bytes(r.head, cut.slice(r.consumed)))).toBeCloseTo(500, 6);
   });
 });

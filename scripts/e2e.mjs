@@ -10,9 +10,13 @@
 //
 // Each recording is checked for: completed state, a duration that matches the time
 // actually recorded (pauses excluded), working seek, audible audio, the expected video
-// size, removal of the raw file, and a Downloads copy whose SHA-256 matches.
+// size, removal of the raw file, a Downloads copy whose SHA-256 matches, and playback
+// in GStreamer (what GNOME Videos uses), since a file Chrome plays is not necessarily
+// one a desktop player accepts.
 //
-// Environment: CHROME=/path/to/chromium (default /usr/bin/chromium).
+// Environment: CHROME=/path/to/chromium (default /usr/bin/chromium). The GStreamer
+// check is skipped when its Python bindings are missing, unless REQUIRE_GSTREAMER=1
+// (set on CI).
 //
 // Two browser constraints shape this script:
 // - Headless Chromium has no audio pipeline, so captured tab audio is pure silence.
@@ -20,6 +24,7 @@
 // - Branded Google Chrome no longer loads unpacked extensions from the command line,
 //   so this needs Chromium (or Chrome for Testing).
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
@@ -244,12 +249,23 @@ async function verify(browser, ext, id, expect) {
       const copy = await readFile(join(downloads, "Dohra", id, "recording.webm"));
       const hash = createHash("sha256").update(copy).digest("hex");
       check(hash === m.sha256, "Downloads copy matches sha256", `${(copy.length / 1e6).toFixed(2)} MB`);
+      checkGstreamer(join(downloads, "Dohra", id, "recording.webm"));
       const exportedMeta = JSON.parse(await readFile(join(downloads, "Dohra", id, "session.json"), "utf8"));
       check(exportedMeta.id === id, "Downloads has session.json");
     } catch (e) {
       check(false, "Downloads copy exists", e.message);
     }
   }
+}
+
+function checkGstreamer(file) {
+  const run = spawnSync("python3", [join(root, "scripts", "gst-play.py"), file], { encoding: "utf8" });
+  const output = (run.stdout || run.stderr || String(run.error)).trim();
+  if (run.status === 2 && !process.env.REQUIRE_GSTREAMER) {
+    console.log(`  - plays in GStreamer — skipped (${output})`);
+    return;
+  }
+  check(run.status === 0, "plays in GStreamer (GNOME Videos)", output);
 }
 
 // ---- scenarios ----------------------------------------------------------------------

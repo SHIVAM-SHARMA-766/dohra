@@ -26,9 +26,12 @@ jobs:
         id: chromium
         with:
           chrome-version: latest
+      # Recordings must also play in GStreamer, which desktop players on Linux use.
+      - run: sudo apt-get install -y --no-install-recommends python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-good
       - run: npm run e2e
         env:
           CHROME: ${{ steps.chromium.outputs.chrome-path }}
+          REQUIRE_GSTREAMER: "1"
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

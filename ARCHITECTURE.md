@@ -109,18 +109,29 @@ and once in Downloads. The library shows how much the browser is using, and dele
 session there leaves the Downloads copy. Turning off "save a copy to Downloads" avoids
 the duplicate, but the recording then disappears if the extension is removed.
 
-### Finalizing: duration and hash
+### Finalizing: header repair and hash
 
-`MediaRecorder` streams WebM, so it never writes the file's **Duration**. Without one,
-players show no length and Chrome cannot seek. [webm.ts](src/lib/webm.ts) fixes this
-with a minimal EBML edit:
+Chrome's `MediaRecorder` writes two things into the WebM header that need fixing.
+[webm.ts](src/lib/webm.ts) repairs both with a minimal EBML edit:
+
+- **Missing Duration.** It streams, so it never goes back to write how long the
+  recording was. Without a Duration, players show no length and Chrome cannot seek.
+- **A false AlphaMode.** It marks VP8 tracks as carrying transparency
+  (`AlphaMode = 1`) when they have none. Chrome ignores the flag. GStreamer — and so
+  GNOME Videos (Totem), the default player on many Linux desktops — sends the stream to
+  an alpha decoder, which fails with "Cannot handle streams without an initial alpha
+  buffer". Totem reports that as a missing codec. A tab never has transparency, so the
+  flag is zeroed.
+
+The repair:
 
 1. Read the first 64 KiB. MediaRecorder's header is a few hundred bytes.
 2. Find `Segment → Info`, and add a float64 `Duration`, or overwrite one that already
    exists.
 3. Grow the Info size field, and the Segment size if it is known (MediaRecorder writes
    "unknown").
-4. Write the new head, then copy the rest of `raw.webm` across unchanged, in 4 MiB
+4. Find `Segment → Tracks → TrackEntry → Video → AlphaMode`, and zero it in place.
+5. Write the new head, then copy the rest of `raw.webm` across unchanged, in 4 MiB
    chunks.
 
 The copy pass also computes the **SHA-256** of `recording.webm`, using `@noble/hashes`
@@ -129,7 +140,7 @@ lets an exported copy be checked later.
 
 Finalizing is idempotent. `raw.webm` is deleted only after `recording.webm` is
 complete, so an interrupted finalize can simply run again. If the header cannot be
-patched, the file is still copied, and the session carries a warning, because a
+repaired, the file is still copied, and the session carries a warning, because a
 recording that cannot be seeked beats losing it.
 
 ### Recovery
@@ -173,9 +184,9 @@ static slides, where sharp text matters more than smooth motion.
 
 ## Testing
 
-- **Unit tests** (`npm test`) cover the WebM patcher against synthetic EBML: the
+- **Unit tests** (`npm test`) cover the WebM repair against synthetic EBML: the
   MediaRecorder layout, a known Segment size, an existing Duration, a size field that
-  has to widen, and malformed input. They also cover session naming and formatting.
+  has to widen, Chrome's AlphaMode, a cut-off Tracks element, and malformed input. They also cover session naming and formatting.
 - **End-to-end** (`npm run e2e`, [scripts/e2e.mjs](scripts/e2e.mjs)) loads the built
   extension into real Chromium and drives it through the popup against a test page
   with moving video and a steady tone. It covers three scenarios:
@@ -184,7 +195,10 @@ static slides, where sharp text matters more than smooth motion.
   - a browser killed with `SIGKILL` mid-recording and then recovered.
 
   Each recording is checked for duration, seeking, audible audio, video size, raw-file
-  cleanup, and the SHA-256 of the Downloads copy.
+  cleanup, and the SHA-256 of the Downloads copy. The Downloads copy is also played
+  through GStreamer ([scripts/gst-play.py](scripts/gst-play.py)), because a file Chrome
+  plays is not necessarily one a desktop player accepts. That is how the AlphaMode
+  problem slipped through the first version.
 
   Two quirks of the test setup:
   - Headless Chromium captures tab audio as silence, so the test runs headful under
