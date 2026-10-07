@@ -186,7 +186,8 @@ static slides, where sharp text matters more than smooth motion.
 
 - **Unit tests** (`npm test`) cover the WebM repair against synthetic EBML: the
   MediaRecorder layout, a known Segment size, an existing Duration, a size field that
-  has to widen, Chrome's AlphaMode, a cut-off Tracks element, and malformed input. They also cover session naming and formatting.
+  has to widen, Chrome's AlphaMode, a cut-off Tracks element, and malformed input.
+  They also cover session naming and formatting.
 - **End-to-end** (`npm run e2e`, [scripts/e2e.mjs](scripts/e2e.mjs)) loads the built
   extension into real Chromium and drives it through the popup against a test page
   with moving video and a steady tone. It covers three scenarios:
