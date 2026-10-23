@@ -20,6 +20,8 @@ import {
 } from "../lib/transcript";
 import { hasDevanagari, searchKey, toRoman } from "../lib/translit";
 
+const MODEL_LABEL: Record<string, string> = { small: "Small", medium: "Medium", large: "High" };
+
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const id = new URLSearchParams(location.search).get("id") ?? "";
@@ -141,8 +143,9 @@ function renderStatus(): void {
   } else if (state === "failed") {
     el.textContent = `Transcription failed: ${status?.error ?? transcript?.error ?? "unknown error"}`;
   } else if (transcript) {
-    const lang = transcript.language ? `, ${transcript.language}` : "";
-    el.textContent = `${lines} lines · ${transcript.model ?? "whisper"} model${lang}`;
+    const lang = transcript.language === "hinglish" ? ", Hinglish" : transcript.language ? `, ${transcript.language}` : "";
+    const model = MODEL_LABEL[transcript.model ?? ""] ?? transcript.model ?? "Whisper";
+    el.textContent = `${lines} lines · ${model} model${lang}`;
   } else {
     el.textContent = "";
   }

@@ -209,11 +209,24 @@ ran at 0.94× with 3 threads.
 - **Chunks are about 2 minutes.** Whisper encodes 30-second windows and re-encodes from
   the last complete line at the end of every run, so each run pays about one extra
   window. Measured: a 28-second chunk ran at 0.7× real time, 2 minutes at 1.0×.
-- **Language is detected per chunk.** `-l auto` costs an extra encoder pass per run,
-  about 10% on 2-minute chunks. An earlier version detected once and locked it, which
-  was faster, but a class that switched language after its first words was then
-  translated instead of transcribed. Classes mix Hindi and English, so the cost is
-  worth it.
+- **Hinglish, written in Roman script.** Whisper has no Hinglish. Three ways were
+  tried on a Hindi-English teaching clip, a pure-Hindi clip and an English one:
+  - `-l auto` detects per chunk (an extra encoder pass, ~10%). A mixed chunk came out
+    in Devanagari with English words in Latin. A short or English-heavy chunk was
+    taken for English, and the Hindi in it was dropped. That is what users saw.
+  - `-l hi` gives the same Devanagari, always.
+  - `-l en` with a Roman-Hinglish `--prompt` ("Haan toh students, aaj hum…") writes
+    what people type: "Acha toh students, aaj hum binary search tree ke baare mein
+    padhenge". Pure Hindi was romanised, not translated ("Meri maa ne kaha ki khaana
+    ban gaya hai"), and English stayed English. This held with all three models.
+
+  Dohra uses the third (`language: "hinglish"`), which also skips detection. On the
+  mixed clip in Devanagari, High was clearly best ("छोटी", "ठीक है?" where Small and
+  Medium wrote "चोटी", "तीक है"). In Roman, Medium and High were close; High
+  sometimes adds accents ("á jau").
+- **Runaway repeats are cut.** Whisper sometimes loops on one word to the end of a
+  window ("hello hello hello…" for ten seconds). More than three of the same word in a
+  row are collapsed to three and "…".
 - **Model load is 0.3 s**, so starting `whisper-cli` per chunk is cheaper than keeping a
   server process alive.
 
@@ -467,7 +480,8 @@ These need a manual check.
 - Without headphones, the microphone also records the class from the speakers. Echo
   cancellation reduces this but does not remove it. The transcript then repeats
   "Them" lines as "Me".
-- Language is detected per two-minute chunk. A chunk that mixes languages takes the
-  dominant one. Whisper's output for Hinglish is then Devanagari, with English words
-  sometimes written in Devanagari too.
+- Hinglish depends on a prompt steering Whisper, not on a trained mode. Its spelling
+  varies ("padhenge"/"parhenge"), and a long pure-English stretch may still drift.
+  Transcripts made before 0.4 are in Devanagari; the session page's Roman view
+  converts them.
 - Transcribing an existing recording decodes all of its audio in memory at once.

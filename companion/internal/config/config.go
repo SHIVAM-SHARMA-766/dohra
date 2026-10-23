@@ -23,7 +23,7 @@ const HostName = "com.dohra.companion"
 
 type Config struct {
 	Model       string `json:"model"`    // active model: "small", "medium" or "large" (High); chosen in Dohra
-	Language    string `json:"language"` // default for new sessions: "auto", "hi", "en", ...
+	Language    string `json:"language"` // default for new sessions: "hinglish", "auto", "hi", "en", ...
 	LiveThreads int    `json:"liveThreads"`
 	IdleThreads int    `json:"idleThreads"`
 }
@@ -34,7 +34,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		Model:       "", // none until the user installs one from Dohra
-		Language:    "auto",
+		Language:    "hinglish",
 		LiveThreads: 3,
 		IdleThreads: max(2, min(8, runtime.NumCPU()/2)),
 	}

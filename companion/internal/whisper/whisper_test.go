@@ -44,3 +44,18 @@ func TestWriteWAV(t *testing.T) {
 		t.Fatalf("sample rate bytes % x", data[24:28])
 	}
 }
+
+func TestCollapseRepeats(t *testing.T) {
+	cases := map[string]string{
+		"hello hello hello hello hello hello":   "hello hello hello …",
+		"Hello, hello, hello, hello. Theek hai": "Hello, hello, hello, … Theek hai",
+		"haan haan haan":                        "haan haan haan",
+		"ab hum dekhenge":                       "ab hum dekhenge",
+		"— — — —":                               "— — — —", // no letters: left alone
+	}
+	for in, want := range cases {
+		if got := collapseRepeats(in); got != want {
+			t.Errorf("collapseRepeats(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

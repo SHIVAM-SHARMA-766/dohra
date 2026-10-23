@@ -8,10 +8,10 @@
 // fewer threads; once all recordings have stopped it gets more and the queue
 // catches up.
 //
-// With language "auto", Whisper detects the language of every chunk. That costs an
-// extra encoder pass per chunk (about 10% on 2-minute chunks) but lets a class move
-// between Hindi and English; locking the first detection would make Whisper
-// translate everything after a switch.
+// Dohra asks for "hinglish": Hindi and English as spoken, in Roman script (see
+// package whisper). "auto" still works and detects the language of every chunk,
+// at the cost of an extra encoder pass; a short or English-heavy chunk is then
+// taken for English and its Hindi lost.
 package engine
 
 import (
@@ -146,7 +146,7 @@ func (e *Engine) Start(id, language string) error {
 		return nil
 	}
 	if language == "" {
-		language = "auto"
+		language = whisper.Hinglish
 	}
 	if err := e.store.Delete(id); err != nil {
 		return err

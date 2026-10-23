@@ -23,7 +23,7 @@ same session format:
 | Stage | What | Status |
 |---|---|---|
 | 1 | Record a tab's audio and video locally, browse and play recordings | Done |
-| 2 | Transcript made on this computer while the class runs (Hindi, English, Hinglish), "me / them" labels, Devanagari and Roman views | Done |
+| 2 | Transcript made on this computer while the class runs (Hindi, English, Hinglish), "me / them" labels, written as Roman-script Hinglish | Done |
 | 3 | Plain-English meaning of each line, unfinished sentences completed, summary | Planned |
 | 4 | Live transcript in a side panel, with a hotkey to hide it while screen sharing | Planned |
 | 5 | Desktop apps (e.g. the Zoom app) as well as browser tabs | Planned |
@@ -108,7 +108,8 @@ Every recording is the same, so there is nothing to choose:
 - **audio and video**, at your screen's full resolution — about 1.2 GB per hour at
   1920×1080;
 - **your microphone**;
-- **a transcript**, with the spoken language detected automatically.
+- **a transcript**, written as Hinglish: Hindi in Roman script ("theek hai"), English
+  as English.
 
 The popup shows exactly what will be recorded before you start.
 Closing the tab also stops the recording and saves it. You can keep using other tabs
@@ -121,8 +122,8 @@ quick-start popup* on Dohra's **Settings** page (linked from the popup and the
 library). The popup then shows **Include my microphone**. Use headphones if you can;
 otherwise the microphone also picks up the class from your speakers.
 
-**Transcripts** are made while you record, by the companion. The language is detected
-for every two-minute stretch, so a class can move between Hindi, English and Hinglish.
+**Transcripts** are made while you record, by the companion, in Roman-script
+Hinglish, so a class can move freely between Hindi and English.
 The popup shows how far the transcript has got. If the companion is not installed or
 not ready, the class is still recorded, and the popup says the transcript will be
 missing; it can be made later from the recording's page.
@@ -132,9 +133,8 @@ Open a recording from the library to see it with its transcript:
 - Click any line to jump the recording to that moment; the line being played is
   highlighted and kept in view (untick **Follow** to scroll freely).
 - **Search** finds a word in either script — `padhenge` finds `पढ़ेंगे`.
-- Switch Hindi between **देवनागरी** and **Roman**. The Roman view is a mechanical
-  transliteration ("aaj ham padhenge"), readable and searchable but not polished
-  Hinglish; that comes in stage 3.
+- Transcripts made before 0.4 are in Devanagari; for those, switch between
+  **देवनागरी** and **Roman** (a mechanical transliteration).
 - Lines are marked **Me** (your microphone) or **Them** (the tab).
 - **Download transcript (.txt)** saves it as plain text with timestamps.
 

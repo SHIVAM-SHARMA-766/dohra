@@ -14,15 +14,28 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"unicode"
 )
 
 type Options struct {
 	Binary   string // path to whisper-cli
 	Model    string // path to a ggml model
 	VAD      string // path to the Silero VAD model; empty disables VAD
-	Language string // "auto", "en", "hi", ...
+	Language string // "hinglish", "auto", "en", "hi", ...
 	Threads  int
 }
+
+// Hinglish is written in Roman script, the way it is typed: Hindi as
+// "theek hai", English as English. Whisper has no such language, but asked for
+// English with a Roman-Hinglish prompt it writes exactly that. Measured on
+// Hindi, English and mixed speech, it neither translated the Hindi nor
+// romanised the English, with all three models. With "hi" Whisper writes
+// Devanagari; with "auto" a short or English-heavy chunk is detected as
+// English and its Hindi is dropped or translated.
+const (
+	Hinglish       = "hinglish"
+	HinglishPrompt = "Haan toh students, aaj hum is topic ke baare mein padhenge. Agar doubt hai toh puch lena, theek hai?"
+)
 
 type Segment struct {
 	FromMs int64  `json:"fromMs"`
@@ -48,13 +61,20 @@ func Run(ctx context.Context, opts Options, samples []int16) (Result, error) {
 		return Result{}, err
 	}
 	base := filepath.Join(dir, "out")
+	lang := opts.Language
+	if lang == Hinglish {
+		lang = "en"
+	}
 	args := []string{
 		"-m", opts.Model,
 		"-f", wav,
 		"-t", fmt.Sprint(max(1, opts.Threads)),
-		"-l", opts.Language,
+		"-l", lang,
 		"-oj", "-of", base,
 		"-np",
+	}
+	if opts.Language == Hinglish {
+		args = append(args, "--prompt", HinglishPrompt)
 	}
 	if opts.VAD != "" {
 		args = append(args, "--vad", "-vm", opts.VAD)
@@ -76,7 +96,11 @@ func Run(ctx context.Context, opts Options, samples []int16) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("whisper wrote no output: %w", err)
 	}
-	return parse(data)
+	res, err := parse(data)
+	if opts.Language == Hinglish {
+		res.Language = Hinglish
+	}
+	return res, err
 }
 
 type output struct {
@@ -99,7 +123,7 @@ func parse(data []byte) (Result, error) {
 	}
 	res := Result{Language: out.Result.Language}
 	for _, t := range out.Transcription {
-		text := strings.TrimSpace(t.Text)
+		text := collapseRepeats(strings.TrimSpace(t.Text))
 		if text == "" || isNoise(text) {
 			continue
 		}
@@ -114,6 +138,36 @@ func isNoise(text string) bool {
 	return (strings.HasPrefix(text, "[") && strings.HasSuffix(text, "]")) ||
 		(strings.HasPrefix(text, "(") && strings.HasSuffix(text, ")")) ||
 		(strings.HasPrefix(text, "*") && strings.HasSuffix(text, "*"))
+}
+
+// MaxRepeats is how many times in a row one word may appear. Whisper sometimes
+// falls into a loop and repeats a word to the end of the window ("hello hello
+// hello ..." over ten seconds); nobody says a word more than a few times running.
+const MaxRepeats = 3
+
+// collapseRepeats cuts runs of the same word, ignoring case and punctuation,
+// down to MaxRepeats, marking the cut with "…".
+func collapseRepeats(text string) string {
+	words := strings.Fields(text)
+	norm := func(w string) string {
+		return strings.ToLower(strings.TrimFunc(w, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) }))
+	}
+	out := make([]string, 0, len(words))
+	run := 0
+	for i, w := range words {
+		if i > 0 && norm(w) != "" && norm(w) == norm(words[i-1]) {
+			run++
+		} else {
+			run = 1
+		}
+		switch {
+		case run <= MaxRepeats:
+			out = append(out, w)
+		case run == MaxRepeats+1:
+			out[len(out)-1] += " …"
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 func lastLine(s string) string {

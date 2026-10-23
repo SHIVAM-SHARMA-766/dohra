@@ -243,8 +243,8 @@ async function onModelProgress(model: string, done: number): Promise<void> {
 export async function startSession(sessionId: string, live: boolean): Promise<boolean> {
   const info = await checkCompanion();
   if (!info.ready) return false;
-  // Classes mix Hindi and English, so the language is detected for every chunk.
-  await request({ type: "start", sessionId, language: "auto" });
+  // Classes mix Hindi and English: written as Hinglish in Roman script (see whisper.go).
+  await request({ type: "start", sessionId, language: "hinglish" });
   inProgress.add(sessionId);
   clearTimeout(idleTimer);
   await setStatus(sessionId, { state: live ? "live" : "transcribing", receivedMs: 0, doneMs: 0, error: null });
