@@ -33,7 +33,8 @@ context can change it safely.
 | `src/background/` | Service worker. Turns popup clicks and the `Alt+Shift+R` command into a recording. Owns everything that needs extension APIs: the tab-capture stream ID, the offscreen document's lifecycle, the badge, and downloads. Keeps the one active recording in `chrome.storage.session`. |
 | `src/offscreen/` | The recorder. Captures the tab (and mic), mixes audio, plays the tab back to the speakers, runs `MediaRecorder`, and streams chunks to the storage worker. |
 | `src/worker/` | Storage worker. The only code that writes recording files. |
-| `src/popup/` | Toolbar popup: options, start/pause/stop, live timer. Holds no state of its own. |
+| `src/popup/` | Quick start: title, start/pause/stop, live timer, and a summary of what will be recorded. Holds no state of its own. |
+| `src/settings/` | Dohra's settings page: the microphone switch for the popup, and the Downloads copy. |
 | `src/library/` | Lists, opens, exports and deletes sessions, shows transcript state, and recovers interrupted recordings. |
 | `src/session/` | One recording: player and transcript, seek-on-click, follow, search, script toggle, `.txt` download, and transcribing a recording after the fact. |
 | `src/companion-page/` | Setup instructions for the companion, with a live readiness check. |
@@ -108,8 +109,8 @@ with `recorder` naming itself. `schema` versions the format.
   write in place, and data survives a crash once flushed. The async
   `createWritable()` stream API writes to a temporary file and commits only on
   `close()`, so a crash mid-class would lose the whole recording.
-- **Memory stays flat.** Chunks go straight to disk. A one-hour 720p class is about
-  560 MB, and none of it is held in memory.
+- **Memory stays flat.** Chunks go straight to disk. A one-hour class at 1920×1080 is
+  about 1.2 GB, and none of it is held in memory.
 - **No permission prompts.** The File System Access API could write straight to a
   user-chosen folder, but an offscreen document cannot show the permission prompt it
   needs, and the grant can lapse when the browser restarts. Downloads works without
@@ -196,9 +197,11 @@ a real meeting:
 - **Chunks are about 2 minutes.** Whisper encodes 30-second windows and re-encodes from
   the last complete line at the end of every run, so each run pays about one extra
   window. Measured: a 28-second chunk ran at 0.7× real time, 2 minutes at 1.0×.
-- **Language is detected once.** `-l auto` costs an extra encoder pass per run. The
-  first chunk with speech detects it, and the rest of the session uses that language.
-  The popup's language hint skips detection entirely.
+- **Language is detected per chunk.** `-l auto` costs an extra encoder pass per run,
+  about 10% on 2-minute chunks. An earlier version detected once and locked it, which
+  was faster, but a class that switched language after its first words was then
+  translated instead of transcribed. Classes mix Hindi and English, so the cost is
+  worth it.
 - **Model load is 0.3 s**, so starting `whisper-cli` per chunk is cheaper than keeping a
   server process alive.
 
@@ -311,23 +314,40 @@ no prebuilt whisper.cpp command-line binary, so there it comes from Homebrew.
 | A service worker cannot create blob URLs | `transcript.json` is exported to Downloads as a `data:` URL. |
 | Unpacked extension IDs depend on the folder path | The manifest pins a `key`, so the ID the companion trusts is the same everywhere. |
 
-## Settings
+## Recording format and settings
 
-Stored in `chrome.storage.local`:
+Since 0.3, the format is not a choice:
 
-| Setting | Values |
-|---|---|
-| Mode | `video` or `audio` |
-| Quality | 480p, 720p (default) or 1080p |
-| Microphone | on or off |
-| Auto-export | on or off |
-| Transcribe | on (default) or off; needs the companion |
-| Language | `auto` (default), `hi` or `en`, passed to Whisper |
+- **Audio and video.** The tab is captured with its size limited to the screen's
+  resolution in device pixels. In practice that is the tab's own size, at full detail.
+- **The microphone**, unless the settings allow a per-recording switch.
+- **A transcript**, with language `auto`.
+
+Older recordings may be audio-only or carry a quality such as "720p". The session
+format still describes both.
 
 Video is VP8 and audio is Opus at 96 kbps. VP8 is chosen over VP9 because VP9 encoding
 is much heavier on the CPU, which matters on an ordinary laptop that is also running
-the class. The bitrates (600 kbps, 1.2 Mbps and 2.5 Mbps) suit lecture content: mostly
-static slides, where sharp text matters more than smooth motion.
+the class.
+
+The video bitrate scales with the captured pixels at 0.043 bits per pixel per frame,
+the density that gave 1.2 Mbps at 720p, which was tuned on lectures: mostly static
+slides, where sharp text matters more than smooth motion. That is about 2.7 Mbps
+(1.2 GB per hour) at 1920×1080. It is clamped between 1.2 and 8 Mbps.
+`session.json` records the actual capture size, e.g. `"quality": "1920x1080"`.
+
+Settings, stored in `chrome.storage.local` and edited on `settings.html`:
+
+| Setting | Values |
+|---|---|
+| `micSwitchInPopup` | off (default): the microphone is always recorded and the popup does not mention it. On: the popup shows "Include my microphone". |
+| `mic` | the popup switch's state; ignored while `micSwitchInPopup` is off |
+| `autoExport` | on (default) or off: copy recordings and transcripts to Downloads |
+
+Settings from earlier versions (mode, quality, transcribe, language) are ignored.
+
+The microphone needs permission once. While it is required and not granted, the
+popup's Start button is disabled and links to the permission page.
 
 ## Testing
 
@@ -347,14 +367,18 @@ static slides, where sharp text matters more than smooth motion.
 - **End-to-end** (`npm run e2e`, [scripts/e2e.mjs](scripts/e2e.mjs)) loads the built
   extension into real Chromium and drives it through the popup. It covers six scenarios:
   - a paused video recording with the microphone;
-  - an audio-only recording ended by closing the tab;
+  - a recording ended by closing the tab;
   - a browser killed with `SIGKILL` mid-recording and then recovered;
   - the library listing them;
   - live transcription of a page playing speech (whisper.cpp's public-domain JFK
     sample) through the real companion with the small model. The transcript must
     contain the spoken words, and the session page must show every line, seek on
     click, and filter on search;
-  - transcribing a finished recording from its session page.
+  - transcribing a recording again from its session page, after removing its
+    transcript.
+
+  It also checks that the popup offers no format, transcript or language choices, and
+  that it states what will be recorded.
 
   The first three use a test page with moving video and a steady tone.
 
@@ -396,7 +420,7 @@ These need a manual check.
 - Without headphones, the microphone also records the class from the speakers. Echo
   cancellation reduces this but does not remove it. The transcript then repeats
   "Them" lines as "Me".
-- Language detection runs once per session, on the first speech. A class that starts
-  in English and continues in Hindi is transcribed as English (Whisper then translates
-  rather than transcribes). Set the language in the popup for such classes.
+- Language is detected per two-minute chunk. A chunk that mixes languages takes the
+  dominant one. Whisper's output for Hinglish is then Devanagari, with English words
+  sometimes written in Devanagari too.
 - Transcribing an existing recording decodes all of its audio in memory at once.

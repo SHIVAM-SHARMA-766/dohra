@@ -89,24 +89,34 @@ mistakes, especially with names, technical terms and Hindi.
 ## Use
 
 1. Open the class in a tab.
-2. Click the Dohra icon. Choose **Audio + video** or **Audio only**, and a quality
-   (720p by default, about 560 MB per hour).
-3. Press **Start recording**. The toolbar icon shows **REC** while recording.
-4. **Pause** and **Stop** are in the same popup. `Alt+Shift+R` starts or stops
+2. Click the Dohra icon, and press **Start recording**. The toolbar icon shows **REC**
+   while recording.
+3. **Pause** and **Stop** are in the same popup. `Alt+Shift+R` starts or stops
    recording without opening it.
 
+Every recording is the same, so there is nothing to choose:
+
+- **audio and video**, at your screen's full resolution — about 1.2 GB per hour at
+  1920×1080;
+- **your microphone**;
+- **a transcript**, with the spoken language detected automatically.
+
+The popup shows exactly what will be recorded before you start.
 Closing the tab also stops the recording and saves it. You can keep using other tabs
 while recording.
 
-**Your own voice.** Tick **Include my microphone** to record yourself as well. The first
-time, the popup links to a page where the browser asks for microphone access. Use
-headphones if you can; otherwise the microphone also picks up the class from your
-speakers.
+**Your microphone** is part of every recording. The first time, the popup asks you to
+allow microphone access, and **Start** stays disabled until you do. To be able to leave
+the microphone out of some recordings, turn on *Show a microphone switch in the
+quick-start popup* on Dohra's **Settings** page (linked from the popup and the
+library). The popup then shows **Include my microphone**. Use headphones if you can;
+otherwise the microphone also picks up the class from your speakers.
 
-**Transcripts.** With **Transcribe** ticked (the default) and the companion installed,
-the transcript is made while you record. Set **Spoken language** to *Hindi / Hinglish*
-for classes in Hindi; *Detect automatically* decides from the first speech it hears and
-sticks with that. The popup shows how far the transcript has got.
+**Transcripts** are made while you record, by the companion. The language is detected
+for every two-minute stretch, so a class can move between Hindi, English and Hinglish.
+The popup shows how far the transcript has got. If the companion is not installed or
+not ready, the class is still recorded, and the popup says the transcript will be
+missing; it can be made later from the recording's page.
 
 Open a recording from the library to see it with its transcript:
 
@@ -119,8 +129,8 @@ Open a recording from the library to see it with its transcript:
 - Lines are marked **Me** (your microphone) or **Them** (the tab).
 - **Download transcript (.txt)** saves it as plain text with timestamps.
 
-A recording made without the companion, or before it was installed, can be transcribed
-afterwards from its page with **Transcribe this recording**.
+A recording made while the companion was missing can be transcribed afterwards from
+its page with **Transcribe this recording**.
 
 ### Where recordings go
 
@@ -155,9 +165,10 @@ interrupted recording automatically and keeps everything up to the last few seco
 - **Transcripts are only as good as the model.** Expect misheard names and terms,
   especially with the small model and in Hindi. The recording is always there to check
   against: click the line.
-- **Upgrading from 0.1.** Version 0.2 fixes the extension's ID so the companion can
-  trust it. The browser therefore treats 0.2 as a new extension, and the library starts
-  empty; recordings made with 0.1 remain in `Downloads/Dohra/`.
+- **Upgrading from 0.1.** Remove Dohra in `chrome://extensions` and load it again with
+  **Load unpacked**; reloading is not enough. Since 0.2 the extension's ID is fixed so
+  the companion can trust it, and an installed 0.1 keeps its old ID until removed. The
+  library then starts empty; recordings made with 0.1 remain in `Downloads/Dohra/`.
 
 ## Develop
 
@@ -176,7 +187,7 @@ How the pieces fit together is in [ARCHITECTURE.md](ARCHITECTURE.md).
 **Releasing:** bump `version` in `package.json`, commit, then push a matching tag:
 
 ```sh
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.3.0 && git push origin v0.3.0
 ```
 
 The release workflow builds the extension zip and the companion for Linux, Windows and

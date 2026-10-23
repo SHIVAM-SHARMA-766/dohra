@@ -41,6 +41,11 @@
   box-sizing: border-box;
 }
 
+/* Without this, any rule that sets display (.check, .row, ...) overrides the hidden attribute. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--bg);

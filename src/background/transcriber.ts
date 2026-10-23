@@ -117,7 +117,15 @@ async function setStatus(id: string, patch: Partial<TranscriptStatus>): Promise<
 }
 
 function isNotInstalled(message: string): boolean {
-  return /not found|forbidden|not allowed/i.test(message);
+  return /not found/i.test(message);
+}
+
+/**
+ * Chrome refuses the companion when it was registered for a different extension
+ * ID — typically Dohra loaded before 0.2 pinned its ID, then only reloaded.
+ */
+function isForbidden(message: string): boolean {
+  return /forbidden|not allowed/i.test(message);
 }
 
 /** Connects (starting the companion if needed) and reports what it can do. */
@@ -140,7 +148,13 @@ export async function checkCompanion(): Promise<CompanionInfo> {
       ready: false,
       version: null,
       model: null,
-      problems: [isNotInstalled(message) ? "The Dohra companion is not installed." : message],
+      problems: [
+        isNotInstalled(message)
+          ? "The Dohra companion is not installed."
+          : isForbidden(message)
+            ? "The companion does not recognise this copy of Dohra. In chrome://extensions, remove Dohra and load it again with Load unpacked."
+            : message,
+      ],
       checkedAt: Date.now(),
     };
   }
@@ -159,8 +173,8 @@ export async function checkCompanion(): Promise<CompanionInfo> {
 export async function startSession(sessionId: string, live: boolean): Promise<boolean> {
   const info = await checkCompanion();
   if (!info.ready) return false;
-  const { language } = await loadSettings();
-  await request({ type: "start", sessionId, language });
+  // Classes mix Hindi and English, so the language is detected for every chunk.
+  await request({ type: "start", sessionId, language: "auto" });
   inProgress.add(sessionId);
   clearTimeout(idleTimer);
   await setStatus(sessionId, { state: live ? "live" : "transcribing", receivedMs: 0, doneMs: 0, error: null });

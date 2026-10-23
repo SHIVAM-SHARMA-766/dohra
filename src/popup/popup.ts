@@ -1,14 +1,10 @@
+// Quick start: one click records the current tab — audio and video at the screen's
+// resolution, the microphone, and a transcript. The only choices here are the title,
+// the Downloads copy, and (if enabled on the Settings page) the microphone.
+
 import { ACTIVE_KEY, LAST_ERROR_KEY, liveDuration, type ActiveRecording, type BackgroundRequest, type Reply } from "../lib/messages";
 import { formatBytes, formatDuration } from "../lib/session";
-import {
-  estimateBytesPerHour,
-  loadSettings,
-  saveSettings,
-  type Language,
-  type Mode,
-  type Quality,
-  type Settings,
-} from "../lib/settings";
+import { estimateBytesPerHour, loadSettings, micEnabled, saveSettings, screenResolution, type Settings } from "../lib/settings";
 import { TRANSCRIPTS_KEY, type CompanionInfo, type TranscriptStatus } from "../lib/transcript";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -17,11 +13,8 @@ const idleView = $<HTMLElement>("idle");
 const recordingView = $<HTMLElement>("recording");
 const errorBanner = $<HTMLParagraphElement>("error");
 const titleInput = $<HTMLInputElement>("title");
-const qualitySelect = $<HTMLSelectElement>("quality");
 const micCheck = $<HTMLInputElement>("mic");
 const autoExportCheck = $<HTMLInputElement>("auto-export");
-const transcribeCheck = $<HTMLInputElement>("transcribe");
-const languageSelect = $<HTMLSelectElement>("language");
 const startButton = $<HTMLButtonElement>("start");
 const pauseButton = $<HTMLButtonElement>("pause");
 const stopButton = $<HTMLButtonElement>("stop");
@@ -42,6 +35,10 @@ function showError(error: string | null): void {
   errorBanner.hidden = !error;
 }
 
+function openPage(path: string): void {
+  void chrome.tabs.create({ url: chrome.runtime.getURL(path) });
+}
+
 async function micGranted(): Promise<boolean> {
   try {
     const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
@@ -53,85 +50,76 @@ async function micGranted(): Promise<boolean> {
 
 // ---- idle view ----------------------------------------------------------------------
 
-function selectedMode(): Mode {
-  return (document.querySelector<HTMLInputElement>('input[name="mode"]:checked')?.value as Mode) ?? "video";
-}
+/** Shows what will be recorded, and blocks Start while the microphone is needed but not allowed. */
+async function renderSummary(): Promise<void> {
+  const { width, height } = screenResolution();
+  const mic = micEnabled(settings);
+  const parts = [`Audio + video at ${width}×${height}`, ...(mic ? ["microphone"] : []), "transcript"];
+  $<HTMLElement>("summary").textContent =
+    `${parts.join(" · ")}. About ${formatBytes(estimateBytesPerHour(width, height))} per hour.`;
 
-async function renderSettings(): Promise<void> {
-  const mode = selectedMode();
-  $<HTMLElement>("quality-field").hidden = mode === "audio";
-  const perHour = estimateBytesPerHour(mode, qualitySelect.value as Quality);
-  $<HTMLElement>("estimate").textContent = `About ${formatBytes(perHour)} per hour.`;
-  $<HTMLElement>("mic-help").hidden = !micCheck.checked || (await micGranted());
-  $<HTMLElement>("language-field").hidden = !transcribeCheck.checked;
-  $<HTMLElement>("companion").hidden = !transcribeCheck.checked;
+  const blocked = mic && !(await micGranted());
+  $<HTMLElement>("mic-help").hidden = !blocked;
+  startButton.disabled = blocked;
 }
 
 async function showCompanion(): Promise<void> {
   const el = $<HTMLElement>("companion");
   el.textContent = "Checking the transcription companion…";
+  delete el.dataset.ready;
+  let info: CompanionInfo | undefined;
   try {
-    const info = (await request({ target: "background", type: "companion-status" })) as CompanionInfo;
-    el.dataset.ready = String(info.ready);
-    if (info.ready) {
-      el.textContent = `Companion ready · ${info.model} model`;
-    } else {
-      el.textContent = `${info.problems[0] ?? "The companion is not ready."} `;
-      const link = document.createElement("a");
-      link.href = "#";
-      link.textContent = "Set it up";
-      link.addEventListener("click", (e) => {
-        e.preventDefault();
-        void chrome.tabs.create({ url: chrome.runtime.getURL("companion.html") });
-      });
-      el.append(link);
-    }
+    info = (await request({ target: "background", type: "companion-status" })) as CompanionInfo | undefined;
   } catch (e) {
     el.textContent = `Could not check the companion: ${e instanceof Error ? e.message : String(e)}`;
+    return;
   }
+  if (!info) {
+    // The popup loads fresh from disk, but the background keeps running old code
+    // until the extension is reloaded.
+    el.textContent = "Dohra was updated but not reloaded. Reload it in chrome://extensions.";
+    return;
+  }
+  el.dataset.ready = String(info.ready);
+  if (info.ready) {
+    el.textContent = `Transcript by the companion · ${info.model} model`;
+    return;
+  }
+  el.textContent = `No transcript for now: ${info.problems[0] ?? "the companion is not ready."} `;
+  const link = document.createElement("a");
+  link.href = "#";
+  link.textContent = "Set up the companion";
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    openPage("companion.html");
+  });
+  el.append(link);
 }
 
 async function persistSettings(): Promise<void> {
-  settings = {
-    mode: selectedMode(),
-    quality: qualitySelect.value as Quality,
-    mic: micCheck.checked,
-    autoExport: autoExportCheck.checked,
-    transcribe: transcribeCheck.checked,
-    language: languageSelect.value as Language,
-  };
+  settings = { ...settings, mic: micCheck.checked, autoExport: autoExportCheck.checked };
   await saveSettings(settings);
-  await renderSettings();
+  await renderSummary();
 }
 
 async function initIdle(): Promise<void> {
   settings = await loadSettings();
-  document.querySelector<HTMLInputElement>(`input[name="mode"][value="${settings.mode}"]`)!.checked = true;
-  qualitySelect.value = settings.quality;
+  $<HTMLElement>("mic-switch").hidden = !settings.micSwitchInPopup;
   micCheck.checked = settings.mic;
   autoExportCheck.checked = settings.autoExport;
-  transcribeCheck.checked = settings.transcribe;
-  languageSelect.value = settings.language;
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   titleInput.value = tab?.title ?? "";
   titleInput.select();
 
-  for (const el of document.querySelectorAll("#idle input, #idle select")) {
-    if (el !== titleInput) el.addEventListener("change", () => void persistSettings());
-  }
-  await renderSettings();
-  if (settings.transcribe) void showCompanion();
-  transcribeCheck.addEventListener("change", () => {
-    if (transcribeCheck.checked) void showCompanion();
-  });
+  micCheck.addEventListener("change", () => void persistSettings());
+  autoExportCheck.addEventListener("change", () => void persistSettings());
+  await renderSummary();
+  void showCompanion();
 }
 
 async function startRecording(): Promise<void> {
-  if (settings.mic && !(await micGranted())) {
-    showError("Allow microphone access first, or untick 'Include my microphone'.");
-    return;
-  }
+  if (startButton.disabled) return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id === undefined) return;
   startButton.disabled = true;
@@ -164,7 +152,7 @@ function renderTranscriptStatus(): void {
   }
   el.textContent =
     t.state === "failed"
-      ? `Transcript failed: ${t.error ?? "unknown error"}`
+      ? `Transcript: ${t.error ?? "failed"}`
       : `Transcript: ${formatDuration(t.doneMs)} of ${formatDuration(t.receivedMs)} done${t.error ? ` (${t.error})` : ""}`;
 }
 
@@ -226,14 +214,16 @@ async function main(): Promise<void> {
     const type = active?.status === "paused" ? "resume" : "pause";
     void request({ target: "background", type }).catch((e) => showError(String(e)));
   });
-  $<HTMLAnchorElement>("open-library").addEventListener("click", (e) => {
-    e.preventDefault();
-    void chrome.tabs.create({ url: chrome.runtime.getURL("library.html") });
-  });
-  $<HTMLAnchorElement>("allow-mic").addEventListener("click", (e) => {
-    e.preventDefault();
-    void chrome.tabs.create({ url: chrome.runtime.getURL("permissions.html") });
-  });
+  for (const [id, page] of [
+    ["open-library", "library.html"],
+    ["open-settings", "settings.html"],
+    ["allow-mic", "permissions.html"],
+  ] as const) {
+    $<HTMLAnchorElement>(id).addEventListener("click", (e) => {
+      e.preventDefault();
+      openPage(page);
+    });
+  }
 }
 
 void main();

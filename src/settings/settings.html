@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dohra Settings</title>
+    <link rel="stylesheet" href="ui.css" />
+    <link rel="stylesheet" href="settings.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a href="library.html" class="back">← Library</a>
+      <span class="brand"><span class="dot"></span>Dohra</span>
+    </header>
+
+    <main>
+      <h1>Settings</h1>
+
+      <section>
+        <h2>Every recording</h2>
+        <ul class="fixed">
+          <li><strong>Audio and video</strong>, at your screen's full resolution (<span id="resolution"></span>).</li>
+          <li><strong>A transcript</strong>, made on this computer by the companion while you record.</li>
+          <li><strong>Spoken language detected automatically</strong>, line by line, so Hindi, English and Hinglish can mix freely.</li>
+          <li><strong>Your microphone</strong>, unless you allow switching it off below.</li>
+        </ul>
+        <p class="hint">About <span id="estimate"></span> of disk per hour at this resolution.</p>
+      </section>
+
+      <section>
+        <h2>Microphone</h2>
+        <label class="check">
+          <input id="mic-switch" type="checkbox" />
+          <span>Show a microphone switch in the quick-start popup</span>
+        </label>
+        <p class="hint">
+          Off: your microphone is recorded every time and the popup does not ask. On: the popup shows
+          "Include my microphone", and you can untick it for a recording.
+        </p>
+        <p id="mic-permission" class="hint"></p>
+      </section>
+
+      <section>
+        <h2>Downloads copy</h2>
+        <label class="check">
+          <input id="auto-export" type="checkbox" />
+          <span>Copy each finished recording and transcript to Downloads/Dohra</span>
+        </label>
+        <p class="hint">
+          The copy survives removing the extension. Without it, the library inside the browser is the only copy.
+        </p>
+      </section>
+
+      <section>
+        <h2>Transcription companion</h2>
+        <p id="companion" role="status">Checking…</p>
+        <p><a href="companion.html">Setup and status</a></p>
+      </section>
+
+      <p id="saved" class="hint" aria-live="polite"></p>
+    </main>
+
+    <script src="settings.js"></script>
+  </body>
+</html>

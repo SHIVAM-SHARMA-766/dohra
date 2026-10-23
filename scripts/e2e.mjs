@@ -5,12 +5,13 @@
 //
 // Scenarios:
 //   1. video + mic, with a pause in the middle, stopped from the popup
-//   2. audio only, stopped by closing the recorded tab
+//   2. stopped by closing the recorded tab
 //   3. browser killed mid-recording, then recovered by the library on next launch
 //   4. the library lists them
 //   5. live transcription of a speech page through the companion, then the session
 //      page: every line shown, clicking a line seeks, search filters
-//   6. transcribing a finished recording from its session page
+//   6. transcribing a recording again from its session page, after its transcript
+//      is removed
 //
 // Each recording is checked for: completed state, a duration that matches the time
 // actually recorded (pauses excluded), working seek, audible audio, the expected video
@@ -175,16 +176,25 @@ async function launch() {
 async function openPopup(browser, page, ext) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await page.bringToFront();
-      await page.triggerExtensionAction(ext);
-      const target = await browser.waitForTarget((t) => t.url().endsWith("/popup.html"), { timeout: 5_000 });
-      const popup = await target.asPage();
-      await popup.waitForSelector("#idle:not([hidden]), #recording:not([hidden])", { timeout: 5_000 });
-      return popup;
-    } catch (e) {
+    await page.bringToFront();
+    await page.triggerExtensionAction(ext);
+    const target = await browser.waitForTarget((t) => t.url().endsWith("/popup.html"), { timeout: 5_000 }).catch((e) => {
       lastError = e;
-      await sleep(500);
+      return null;
+    });
+    if (!target) continue; // nothing opened: clicking again is safe
+    // The popup exists. Clicking the action again would close it, so wait for its
+    // page instead; asPage() fails while the frame is still being created.
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      try {
+        const popup = await target.asPage();
+        await popup.waitForSelector("#idle:not([hidden]), #recording:not([hidden])", { timeout: 3_000 });
+        return popup;
+      } catch (e) {
+        lastError = e;
+        await sleep(200);
+      }
     }
   }
   // Browser UI (bubbles, prompts) is invisible to page screenshots; grab the whole display.
@@ -210,16 +220,17 @@ async function grantMic(browser, ext) {
  * focus, so it cannot be relied on to stay open. The page sends the same messages the
  * popup's buttons do.
  */
-async function startRecording(browser, page, ext, control, { title, mode, mic, transcribe = false }) {
+async function startRecording(browser, page, ext, control, { title, mic }) {
   // Settings go straight into storage: every interaction with a headful popup is a
   // chance for it to lose focus and close mid-call, so the popup is used only for
-  // the click that tab capture requires.
+  // the click that tab capture requires. The microphone is always recorded unless
+  // the popup switch is enabled, so turning it off means enabling that too.
   await control.evaluate(
     async (patch) => {
       const { settings } = await chrome.storage.local.get("settings");
       await chrome.storage.local.set({ settings: { ...settings, ...patch } });
     },
-    { mode, mic, transcribe },
+    mic ? { micSwitchInPopup: false } : { micSwitchInPopup: true, mic: false },
   );
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -321,15 +332,19 @@ async function verify(browser, ext, id, expect) {
   check(m.state === "complete", "state is complete", m.state + (m.error ? ` (${m.error})` : ""));
   check(m.endReason === expect.endReason, `ended by ${expect.endReason}`, m.endReason);
   check(!m.error, "no warnings", m.error ?? "");
-  check(r.names.sort().join(",") === "recording.webm,session.json", "raw file replaced by recording", r.names.join(", "));
+  check(
+    !r.names.includes("raw.webm") && r.names.includes("recording.webm") && r.names.includes("session.json"),
+    "raw file replaced by recording",
+    r.names.join(", "),
+  );
   if (r.duration === undefined) return;
 
   const [lo, hi] = expect.durationS;
   check(Number.isFinite(r.duration) && r.duration >= lo && r.duration <= hi, `duration within ${lo}-${hi}s`, `${r.duration.toFixed(2)}s, meta ${(m.durationMs / 1000).toFixed(2)}s`);
   check(Math.abs(r.seekedTo - r.seekTarget) < 0.6, "seeking works", `asked ${r.seekTarget.toFixed(2)}s, got ${r.seekedTo.toFixed(2)}s`);
   check(r.rms > 0.02, "audio is audible", `rms ${r.rms.toFixed(3)}`);
-  if (expect.video) check(r.width > 0 && r.width <= 1280 && r.height <= 720, "video within 720p", `${r.width}x${r.height}`);
-  else check(r.width === 0, "no video track", `${r.width}x${r.height}`);
+  // Captured at the tab's size, up to the screen's resolution.
+  check(r.width >= 1280 && r.height >= 600 && m.quality === `${r.width}x${r.height}`, "video at the tab's full size", `${r.width}x${r.height}, meta ${m.quality}`);
   check(/^[0-9a-f]{64}$/.test(m.sha256 ?? ""), "sha256 recorded");
 
   if (expect.exported) {
@@ -408,7 +423,17 @@ async function main() {
     const control = await controlPage(browser, ext);
     const page = await browser.newPage();
     await page.goto(url);
-    const one = await startRecording(browser, page, ext, control, { title: "E2E video", mode: "video", mic: process.env.E2E_MIC !== "0" });
+    const popup = await openPopup(browser, page, ext);
+    const quick = await popup.evaluate(() => ({
+      choices: document.querySelectorAll('input[name="mode"], #quality, #language, #transcribe').length,
+      // Rendered visibility, not just the attribute: CSS can override [hidden].
+      micSwitchHidden: document.getElementById("mic-switch").offsetParent === null,
+      summary: document.getElementById("summary").textContent,
+    }));
+    await popup.close().catch(() => {});
+    check(quick.choices === 0 && quick.micSwitchHidden, "quick start offers no format, transcript or language choices");
+    check(/Audio \+ video at \d+×\d+ · microphone · transcript/.test(quick.summary), "quick start states what is recorded", quick.summary);
+    const one = await startRecording(browser, page, ext, control, { title: "E2E video", mic: process.env.E2E_MIC !== "0" });
     await sleep(6_000);
     await command(control, "pause");
     await waitForStatus(control, "paused");
@@ -420,21 +445,21 @@ async function main() {
     await waitForStatus(control, null);
     const err1 = (await state(control)).lastError;
     check(!err1, "no error reported", err1 ?? "");
-    await verify(browser, ext, one, { endReason: "user", durationS: [11, 13.5], video: true, exported: true });
+    await verify(browser, ext, one, { endReason: "user", durationS: [11, 13.5], exported: true });
 
-    console.log("\n2. audio only, stopped by closing the tab");
+    console.log("\n2. stopped by closing the tab");
     const page2 = await browser.newPage();
     await page2.goto(url);
-    const two = await startRecording(browser, page2, ext, control, { title: "E2E audio", mode: "audio", mic: false });
+    const two = await startRecording(browser, page2, ext, control, { title: "E2E tab closed", mic: false });
     await sleep(7_000);
     await page2.close();
     await waitForStatus(control, null);
-    await verify(browser, ext, two, { endReason: "tab-closed", durationS: [6, 8.5], video: false, exported: true });
+    await verify(browser, ext, two, { endReason: "tab-closed", durationS: [6, 8.5], exported: true });
 
     console.log("\n3. browser killed mid-recording, recovered on next launch");
     const page3 = await browser.newPage();
     await page3.goto(url);
-    const three = await startRecording(browser, page3, ext, control, { title: "E2E crash", mode: "video", mic: false });
+    const three = await startRecording(browser, page3, ext, control, { title: "E2E crash", mic: false });
     await sleep(10_000);
     browser.process()?.kill("SIGKILL");
     await sleep(1_000);
@@ -447,7 +472,7 @@ async function main() {
     check(notice.startsWith("Recovered 1 recording"), "library reports the recovery", notice);
     await lib.close();
     // Everything up to the last flushed chunk (every 3 s) survives.
-    await verify(browser, ext, three, { endReason: "recovered", durationS: [5.5, 10.5], video: true, exported: false });
+    await verify(browser, ext, three, { endReason: "recovered", durationS: [5.5, 10.5], exported: false });
 
     console.log("\n4. library lists all three");
     const list = await browser.newPage();
@@ -455,15 +480,19 @@ async function main() {
     await list.waitForSelector(".item");
     const titles = await list.$$eval(".item .title", (els) => els.map((e) => e.textContent));
     check(titles.length === 3, "three recordings listed", titles.join(" | "));
-    const exported = await readdir(join(downloads, "Dohra"));
-    check(exported.length === 2, "two copies in Downloads/Dohra", exported.join(", "));
+    const folders = await readdir(join(downloads, "Dohra"));
+    const withRecording = [];
+    for (const f of folders) {
+      if ((await readdir(join(downloads, "Dohra", f))).includes("recording.webm")) withRecording.push(f);
+    }
+    check(withRecording.length === 2, "two recordings copied to Downloads/Dohra", withRecording.join(", "));
 
     if (TRANSCRIBE) {
       console.log("\n5. live transcription through the companion, then the session page");
       const control2 = await controlPage(browser, ext); // the first control page died with the old browser
       const speech = await browser.newPage();
       await speech.goto(url + "speech");
-      const five = await startRecording(browser, speech, ext, control2, { title: "E2E transcript", mode: "audio", mic: false, transcribe: true });
+      const five = await startRecording(browser, speech, ext, control2, { title: "E2E transcript", mic: false });
       await sleep(25_000);
       await command(control2, "stop");
       await waitForStatus(control2, null);
@@ -494,21 +523,25 @@ async function main() {
       check(matches > 0 && matches <= shown && marked > 0, "search filters and highlights", `${matches} of ${shown} lines`);
       await sp.close();
 
-      console.log("\n6. transcribing a finished recording from its session page");
-      const speech2 = await browser.newPage();
-      await speech2.goto(url + "speech");
-      const six = await startRecording(browser, speech2, ext, control2, { title: "E2E later", mode: "audio", mic: false, transcribe: false });
-      await sleep(15_000);
-      await command(control2, "stop");
-      await waitForStatus(control2, null);
+      console.log("\n6. transcribing again from the session page");
+      // Every recording is transcribed now, so remove this one's transcript to get a
+      // recording without one, as a recording made without the companion would be.
+      await control2.evaluate(async (id) => {
+        const root = await navigator.storage.getDirectory();
+        const dir = await (await root.getDirectoryHandle("sessions")).getDirectoryHandle(id);
+        await dir.removeEntry("transcript.json");
+        const { transcripts } = await chrome.storage.session.get("transcripts");
+        delete transcripts[id];
+        await chrome.storage.session.set({ transcripts });
+      }, five);
       const sp6 = await browser.newPage();
-      await sp6.goto(`chrome-extension://${ext.id}/session.html?id=${six}`);
+      await sp6.goto(`chrome-extension://${ext.id}/session.html?id=${five}`);
       const offered = await sp6.waitForSelector("#transcribe:not([hidden])", { timeout: 15_000 }).then(() => true, () => false);
       check(offered, "session page offers to transcribe");
       if (offered) {
         await sp6.click("#transcribe");
-        const t6 = await waitForTranscript(control2, six, 240_000);
-        checkTranscript(t6, "mixed", 16_000);
+        const t6 = await waitForTranscript(control2, five, 240_000);
+        checkTranscript(t6, "mixed", 26_000);
         const rendered = await sp6.waitForSelector(".line", { timeout: 10_000 }).then(() => true, () => false);
         check(rendered, "session page shows the new transcript");
       }

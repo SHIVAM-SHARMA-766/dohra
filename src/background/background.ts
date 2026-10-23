@@ -16,7 +16,7 @@ import {
   type Reply,
 } from "../lib/messages";
 import { sessionId, type SessionMeta } from "../lib/session";
-import { loadSettings } from "../lib/settings";
+import { loadSettings, micEnabled } from "../lib/settings";
 import * as transcriber from "./transcriber";
 
 const OFFSCREEN_URL = "offscreen.html";
@@ -104,19 +104,23 @@ async function start(tabId: number, title: string): Promise<void> {
     sessionId: id,
     title: name,
     tabId,
-    mode: settings.mode,
+    mode: "video",
     status: "starting",
     progress: { durationMs: 0, bytes: 0, paused: false, at: Date.now() },
   });
 
-  // Transcription is best effort: without the companion, the recording still happens.
+  // Every recording is transcribed. If the companion cannot take it, the class is
+  // still recorded — losing it would be worse — and the transcript can be made later
+  // from the recording's page.
   let transcribe = false;
-  if (settings.transcribe) {
-    try {
-      transcribe = await transcriber.startSession(id, true);
-    } catch (e) {
-      await transcriber.failSession(id, errorMessage(e));
+  try {
+    transcribe = await transcriber.startSession(id, true);
+    if (!transcribe) {
+      const info = await transcriber.checkCompanion();
+      await transcriber.failSession(id, `not transcribed: ${info.problems.join(" ") || "the companion is not ready"}`);
     }
+  } catch (e) {
+    await transcriber.failSession(id, `not transcribed: ${errorMessage(e)}`);
   }
 
   try {
@@ -129,9 +133,7 @@ async function start(tabId: number, title: string): Promise<void> {
         sessionId: id,
         title: name,
         source: { url: tab.url ?? "", title: tab.title ?? "" },
-        mode: settings.mode,
-        quality: settings.quality,
-        mic: settings.mic,
+        mic: micEnabled(settings),
         recorder: `dohra-extension/${chrome.runtime.getManifest().version}`,
         transcribe,
       },

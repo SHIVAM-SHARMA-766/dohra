@@ -23,6 +23,7 @@ const entryPoints = {
   permissions: "src/permissions/permissions.ts",
   session: "src/session/session.ts",
   companion: "src/companion-page/companion.ts",
+  settings: "src/settings/settings.ts",
   worker: "src/worker/storage-worker.ts",
   "tap-worklet": "src/offscreen/tap-worklet.ts",
 };
@@ -39,6 +40,8 @@ const staticFiles = [
   "session/session.css",
   "companion-page/companion.html",
   "companion-page/companion.css",
+  "settings/settings.html",
+  "settings/settings.css",
 ];
 
 async function copyStatic() {

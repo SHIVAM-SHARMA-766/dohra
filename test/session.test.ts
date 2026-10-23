@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatBytes, formatDuration, sessionId, slugify } from "../src/lib/session";
-import { estimateBytesPerHour } from "../src/lib/settings";
+import { DEFAULT_SETTINGS, estimateBytesPerHour, micEnabled, videoBitsPerSecond } from "../src/lib/settings";
 
 describe("slugify", () => {
   it("makes folder-safe names", () => {
@@ -41,8 +41,28 @@ describe("formatting", () => {
   });
 
   it("estimates an hour of 720p at roughly half a gigabyte", () => {
-    const gb = estimateBytesPerHour("video", "720p") / 1e9;
+    const gb = estimateBytesPerHour(1280, 720) / 1e9;
     expect(gb).toBeGreaterThan(0.5);
     expect(gb).toBeLessThan(0.6);
+  });
+});
+
+describe("video bitrate", () => {
+  it("keeps the tuned 1.2 Mbps at 720p and scales with pixels", () => {
+    expect(videoBitsPerSecond(1280, 720)).toBeCloseTo(1_200_000, -4);
+    expect(videoBitsPerSecond(1920, 1080)).toBeCloseTo(2_675_000, -4);
+  });
+
+  it("is bounded for tiny and huge captures", () => {
+    expect(videoBitsPerSecond(320, 240)).toBe(1_200_000);
+    expect(videoBitsPerSecond(5120, 2880)).toBe(8_000_000);
+  });
+});
+
+describe("microphone", () => {
+  it("is always on unless the popup switch is enabled", () => {
+    expect(micEnabled({ ...DEFAULT_SETTINGS, mic: false })).toBe(true);
+    expect(micEnabled({ ...DEFAULT_SETTINGS, micSwitchInPopup: true, mic: false })).toBe(false);
+    expect(micEnabled({ ...DEFAULT_SETTINGS, micSwitchInPopup: true, mic: true })).toBe(true);
   });
 });

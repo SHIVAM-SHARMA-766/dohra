@@ -2,14 +2,12 @@
 // extension page, so each message names its target and receivers ignore the rest.
 
 import type { SessionMeta } from "./session";
-import type { Mode, Quality } from "./settings";
+import type { Mode } from "./settings";
 
 export interface StartOptions {
   sessionId: string;
   title: string;
   source: { url: string; title: string };
-  mode: Mode;
-  quality: Quality;
   mic: boolean;
   /** e.g. "dohra-extension/0.1.0". Offscreen documents cannot read the manifest themselves. */
   recorder: string;

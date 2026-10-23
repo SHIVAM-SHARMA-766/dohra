@@ -7,6 +7,11 @@
 // needs the rest of the CPU. While any session is still recording, Whisper gets
 // fewer threads; once all recordings have stopped it gets more and the queue
 // catches up.
+//
+// With language "auto", Whisper detects the language of every chunk. That costs an
+// extra encoder pass per chunk (about 10% on 2-minute chunks) but lets a class move
+// between Hindi and English; locking the first detection would make Whisper
+// translate everything after a switch.
 package engine
 
 import (
@@ -319,9 +324,6 @@ func (e *Engine) Work(ctx context.Context) {
 			continue
 		}
 		lang := s.meta.Language
-		if lang == "auto" && s.meta.Detected != "" {
-			lang = s.meta.Detected
-		}
 		threads := e.cfg.IdleThreads
 		if e.liveCountLocked() > 0 {
 			threads = e.cfg.LiveThreads

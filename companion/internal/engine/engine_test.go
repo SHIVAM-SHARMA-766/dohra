@@ -141,8 +141,8 @@ func TestLiveSessionTranscribesInChunks(t *testing.T) {
 	}
 	total := 0
 	for i, c := range calls {
-		if want := map[bool]string{true: "auto", false: "hi"}[i == 0]; c.lang != want {
-			t.Fatalf("call %d language %q, want %q (detected once, then locked): %+v", i, c.lang, want, calls)
+		if c.lang != "auto" {
+			t.Fatalf("call %d language %q, want auto for every chunk (classes mix languages): %+v", i, c.lang, calls)
 		}
 		if c.n > testChunk.Target {
 			t.Fatalf("chunk of %d samples exceeds the target", c.n)

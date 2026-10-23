@@ -46,7 +46,7 @@ type Stream struct {
 type Meta struct {
 	ID        string             `json:"id"`
 	Language  string             `json:"language"` // as requested: "auto", "hi", "en"
-	Detected  string             `json:"detected"` // set from the first chunk when Language is "auto"
+	Detected  string             `json:"detected"` // first language detected, when Language is "auto"
 	Model     string             `json:"model"`
 	State     State              `json:"state"`
 	Streams   map[string]*Stream `json:"streams"`

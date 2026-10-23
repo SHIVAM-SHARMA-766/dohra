@@ -9,7 +9,10 @@
   <body>
     <header>
       <span class="brand"><span class="dot"></span>Dohra</span>
-      <a href="#" id="open-library">Library</a>
+      <nav>
+        <a href="#" id="open-library">Library</a>
+        <a href="#" id="open-settings">Settings</a>
+      </nav>
     </header>
 
     <p id="error" class="banner error" hidden></p>
@@ -20,51 +23,23 @@
         <input id="title" type="text" maxlength="120" placeholder="e.g. DSA class — graphs" />
       </label>
 
-      <div class="field">
-        <span>Record</span>
-        <div class="segmented" role="radiogroup">
-          <label><input type="radio" name="mode" value="video" /><span>Audio + video</span></label>
-          <label><input type="radio" name="mode" value="audio" /><span>Audio only</span></label>
-        </div>
-      </div>
-
-      <label class="field" id="quality-field">
-        <span>Quality</span>
-        <select id="quality">
-          <option value="480p">480p</option>
-          <option value="720p">720p</option>
-          <option value="1080p">1080p</option>
-        </select>
-      </label>
-
-      <label class="check">
+      <label class="check" id="mic-switch" hidden>
         <input id="mic" type="checkbox" />
         <span>Include my microphone</span>
       </label>
-      <p id="mic-help" class="hint" hidden>
-        Microphone access is needed once. <a href="#" id="allow-mic">Allow microphone</a>
-      </p>
 
       <label class="check">
         <input id="auto-export" type="checkbox" />
         <span>Also save a copy to Downloads/Dohra</span>
       </label>
 
-      <label class="check">
-        <input id="transcribe" type="checkbox" />
-        <span>Transcribe</span>
-      </label>
-      <label class="field indent" id="language-field">
-        <span>Spoken language</span>
-        <select id="language">
-          <option value="auto">Detect automatically</option>
-          <option value="hi">Hindi / Hinglish</option>
-          <option value="en">English</option>
-        </select>
-      </label>
-      <p id="companion" class="hint indent"></p>
+      <p id="summary" class="summary"></p>
+      <p id="mic-help" class="banner warn" hidden>
+        Dohra records your microphone too, and needs permission once.
+        <a href="#" id="allow-mic">Allow microphone</a>
+      </p>
+      <p id="companion" class="hint"></p>
 
-      <p id="estimate" class="hint"></p>
       <button id="start" class="primary">Start recording</button>
       <p class="hint shortcut">Shortcut: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> starts or stops</p>
     </section>

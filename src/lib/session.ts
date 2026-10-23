@@ -2,7 +2,7 @@
 // in the exported copy under Downloads/Dohra/. Later stages (transcript, notes, slides)
 // add files to the same folder, and a future desktop recorder writes the same format.
 
-import type { Mode, Quality } from "./settings";
+import type { Mode } from "./settings";
 
 export const SCHEMA_VERSION = 1;
 
@@ -20,7 +20,7 @@ export interface SessionMeta {
   title: string;
   source: { url: string; title: string };
   mode: Mode;
-  quality: Quality | null; // null for audio-only
+  quality: string | null; // capture size, e.g. "1920x1080" ("720p" in recordings before 0.3; null for audio-only)
   mic: boolean;
   mimeType: string;
   recorder: string; // e.g. "dohra-extension/0.1.0"

@@ -16,7 +16,7 @@ import {
   type StartOptions,
 } from "../lib/messages";
 import { EXPORT_DIR, FILES, SCHEMA_VERSION, type EndReason, type SessionMeta } from "../lib/session";
-import { AUDIO_BITS_PER_SECOND, QUALITY, TIMESLICE_MS } from "../lib/settings";
+import { AUDIO_BITS_PER_SECOND, FRAME_RATE, screenResolution, TIMESLICE_MS, videoBitsPerSecond } from "../lib/settings";
 import { recordingFile, StorageWorker } from "../lib/storage";
 import { pcmToBase64 } from "../lib/transcript";
 import { Tap } from "./tap";
@@ -57,26 +57,26 @@ function progress(r: Recording): Progress {
   return { durationMs: elapsed(r), bytes: r.bytes, paused: r.runStartedAt === null, at: Date.now() };
 }
 
-function pickMimeType(video: boolean): string {
-  const candidates = video
-    ? ["video/webm;codecs=vp8,opus", "video/webm"]
-    : ["audio/webm;codecs=opus", "audio/webm"];
+function pickMimeType(): string {
+  const candidates = ["video/webm;codecs=vp8,opus", "video/webm"];
   const found = candidates.find((t) => MediaRecorder.isTypeSupported(t));
   if (!found) throw new Error("this browser cannot record WebM");
   return found;
 }
 
-async function captureTab(streamId: string, options: StartOptions): Promise<MediaStream> {
+/**
+ * Captures the tab's audio and video. The size limit is the screen's resolution in
+ * device pixels, so the tab is recorded at the most detail it can have; the actual
+ * size is whatever the tab occupies within that.
+ */
+async function captureTab(streamId: string): Promise<MediaStream> {
   const source = { chromeMediaSource: "tab", chromeMediaSourceId: streamId };
-  const q = QUALITY[options.quality];
+  const { width, height } = screenResolution();
   // Chrome's tab capture takes the legacy "mandatory" constraint form, which the DOM
   // types do not describe.
   const constraints = {
     audio: { mandatory: source },
-    video:
-      options.mode === "video"
-        ? { mandatory: { ...source, maxWidth: q.width, maxHeight: q.height, maxFrameRate: q.frameRate } }
-        : false,
+    video: { mandatory: { ...source, maxWidth: width, maxHeight: height, maxFrameRate: FRAME_RATE } },
   } as unknown as MediaStreamConstraints;
   return navigator.mediaDevices.getUserMedia(constraints);
 }
@@ -100,7 +100,7 @@ async function start(streamId: string, options: StartOptions): Promise<void> {
   const streams: MediaStream[] = [];
   let audio: AudioContext | null = null;
   try {
-    const tab = await captureTab(streamId, options);
+    const tab = await captureTab(streamId);
     streams.push(tab);
 
     // Mix tab audio (and mic) into one track; send tab audio to the speakers as well.
@@ -115,12 +115,15 @@ async function start(streamId: string, options: StartOptions): Promise<void> {
       audio.createMediaStreamSource(mic).connect(mix); // recorded, not played back
     }
 
-    const video = options.mode === "video";
-    const mimeType = pickMimeType(video);
+    const track = tab.getVideoTracks()[0];
+    const size = track?.getSettings();
+    const width = size?.width ?? screenResolution().width;
+    const height = size?.height ?? screenResolution().height;
+    const mimeType = pickMimeType();
     const recorder = new MediaRecorder(new MediaStream([...mix.stream.getAudioTracks(), ...tab.getVideoTracks()]), {
       mimeType,
       audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
-      ...(video ? { videoBitsPerSecond: QUALITY[options.quality].videoBitsPerSecond } : {}),
+      videoBitsPerSecond: videoBitsPerSecond(width, height),
     });
 
     const now = new Date().toISOString();
@@ -129,8 +132,8 @@ async function start(streamId: string, options: StartOptions): Promise<void> {
       id: options.sessionId,
       title: options.title,
       source: options.source,
-      mode: options.mode,
-      quality: video ? options.quality : null,
+      mode: "video",
+      quality: `${width}x${height}`,
       mic: options.mic,
       mimeType,
       recorder: options.recorder,
