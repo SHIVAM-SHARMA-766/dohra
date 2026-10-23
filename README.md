@@ -128,6 +128,16 @@ The popup shows how far the transcript has got. If the companion is not installe
 not ready, the class is still recorded, and the popup says the transcript will be
 missing; it can be made later from the recording's page.
 
+**Import video** in the library adds a file you already have, such as a class
+downloaded earlier or an old Dohra recording, in any format the browser plays (MP4,
+WebM, MP3, M4A, WAV). It is copied into Dohra and transcribed straight away. Keep
+its page open until the audio has been sent; after that the companion carries on
+by itself.
+
+While a transcript is being made, the recording's page shows a percentage and a
+progress bar, and lines appear as each part (about two minutes of audio) finishes.
+The library shows the same percentage.
+
 Open a recording from the library to see it with its transcript:
 
 - Click any line to jump the recording to that moment; the line being played is

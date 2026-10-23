@@ -27,8 +27,32 @@ main {
   content: " · ";
 }
 
-.page-head .search {
-  width: min(300px, 100%);
+.head-tools {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.head-tools .search {
+  width: min(280px, 100%);
+}
+
+.import-progress {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.import-progress > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.import-progress .hint {
+  margin: 2px 0 8px;
 }
 
 .list {

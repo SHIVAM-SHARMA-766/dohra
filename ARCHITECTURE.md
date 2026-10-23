@@ -259,10 +259,17 @@ ran at 0.94× with 3 threads.
    folder. Pages reload when `chrome.storage.session.transcripts` changes. On `done`, the
    final file is written and copied to `Downloads/Dohra/<id>/transcript.json`.
 
+**Importing a file** ([storage.ts](src/lib/storage.ts) `importMedia`) copies it into a
+new session folder as `recording.<ext>`, which `session.json`'s `file` names. Its
+length and picture size come from a hidden media element. Chrome does not load media
+in a background tab, so after 15 s the import goes on without them, and the session
+page fills them in from its player or from decoding. The session is then transcribed
+like any finished recording.
+
 **Transcribing a recording afterwards** reuses the same path with one stream, "mixed".
-The session page decodes `recording.webm` to 16 kHz mono with `OfflineAudioContext` and
-sends it in 10-second blocks. Simple, but it holds the decoded audio in memory: about
-120 MB per hour, plus the file itself.
+The session page decodes the media file to 16 kHz with `OfflineAudioContext`, mixes
+it to mono one 10-second block at a time, and sends the blocks. Simple, but it holds
+the decoded audio in memory: about 120 MB per hour per channel, plus the file itself.
 
 ### Protocol
 

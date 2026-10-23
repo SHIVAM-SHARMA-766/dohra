@@ -88,6 +88,26 @@ h1 {
   margin: 0;
 }
 
+.bar-title > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.percent {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  background: var(--gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.transcript-progress {
+  margin-top: 12px;
+}
+
 .status {
   margin: 1px 0 0;
   color: var(--muted);

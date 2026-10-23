@@ -25,10 +25,22 @@
           <h1>Recordings</h1>
           <p class="sub"><span id="count"></span><span id="usage"></span></p>
         </div>
-        <label class="search">
-          <i data-icon="search"></i>
-          <input id="search" type="text" placeholder="Search titles" aria-label="Search titles" />
-        </label>
+        <div class="head-tools">
+          <label class="search">
+            <i data-icon="search"></i>
+            <input id="search" type="text" placeholder="Search titles" aria-label="Search titles" />
+          </label>
+          <button id="import" class="primary"><i data-icon="upload"></i>Import video</button>
+          <input id="import-file" type="file" accept="video/*,audio/*,.mkv,.webm" hidden />
+        </div>
+      </div>
+      <div id="import-progress" class="import-progress card" hidden>
+        <span class="section-icon"><i data-icon="upload"></i></span>
+        <div>
+          <strong id="import-name"></strong>
+          <p class="hint" id="import-text">Copying into Dohra…</p>
+          <progress id="import-bar" max="1" value="0"></progress>
+        </div>
       </div>
 
       <ul id="list" class="list"></ul>
@@ -37,7 +49,7 @@
         <div class="empty-art"><span class="logo"></span></div>
         <h2>No recordings yet</h2>
         <p>Open your class in a tab, click the Dohra icon in the toolbar and press <strong>Start recording</strong>.</p>
-        <p class="hint">Or press <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>R</kbd> on the class tab.</p>
+        <p class="hint">Or press <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>R</kbd> on the class tab, or <strong>Import video</strong> to transcribe a file you already have.</p>
       </div>
     </main>
 

@@ -12,7 +12,7 @@ export type SessionState =
   | "complete"
   | "failed";
 
-export type EndReason = "user" | "tab-closed" | "capture-error" | "recovered";
+export type EndReason = "user" | "tab-closed" | "capture-error" | "recovered" | "imported";
 
 export interface SessionMeta {
   schema: typeof SCHEMA_VERSION;
@@ -35,6 +35,8 @@ export interface SessionMeta {
   endReason: EndReason | null;
   error: string | null;
   exportedAt: string | null;
+  /** The media file in the folder, when not recording.webm: an imported file keeps its own format. */
+  file?: string;
 }
 
 export const FILES = {
@@ -43,6 +45,11 @@ export const FILES = {
   meta: "session.json",
   transcript: "transcript.json",
 } as const;
+
+/** The name of a session's media file. */
+export function mediaFileName(meta: Pick<SessionMeta, "file">): string {
+  return meta.file ?? FILES.recording;
+}
 
 export const SESSIONS_DIR = "sessions";
 export const EXPORT_DIR = "Dohra";

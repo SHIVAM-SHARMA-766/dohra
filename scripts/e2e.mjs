@@ -14,6 +14,8 @@
 //      page: every line shown, clicking a line seeks, search filters
 //   6. transcribing a recording again from its session page, after its transcript
 //      is removed
+//   7. importing an audio file from disk: stored, opened, and transcribed with a
+//      visible percentage
 //
 // Each recording is checked for: completed state, a duration that matches the time
 // actually recorded (pauses excluded), working seek, audible audio, the expected video
@@ -194,8 +196,10 @@ async function launch() {
  */
 async function openPopup(browser, page, ext) {
   let lastError;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
     await page.bringToFront();
+    // The action is ignored while the window is still taking focus.
+    await sleep(500);
     await page.triggerExtensionAction(ext);
     const target = await browser.waitForTarget((t) => t.url().endsWith("/popup.html"), { timeout: 5_000 }).catch((e) => {
       lastError = e;
@@ -580,7 +584,16 @@ async function main() {
       const sp6 = await browser.newPage();
       await sp6.goto(`chrome-extension://${ext.id}/session.html?id=${five}`);
       const offered = await sp6.waitForSelector("#transcribe:not([hidden])", { timeout: 15_000 }).then(() => true, () => false);
-      check(offered, "session page offers to transcribe");
+      check(
+        offered,
+        "session page offers to transcribe",
+        offered ? "" : JSON.stringify(await sp6.evaluate(() => ({
+          empty: document.getElementById("empty").hidden,
+          text: document.getElementById("empty-text").textContent,
+          status: document.getElementById("transcript-status").textContent,
+          lines: document.querySelectorAll(".line").length,
+        }))),
+      );
       if (offered) {
         await sp6.click("#transcribe");
         const t6 = await waitForTranscript(control2, five, 240_000);
@@ -588,6 +601,49 @@ async function main() {
         const rendered = await sp6.waitForSelector(".line", { timeout: 10_000 }).then(() => true, () => false);
         check(rendered, "session page shows the new transcript");
       }
+
+      console.log("\n7. importing an audio file from disk, transcribed straight away");
+      const libPage = await browser.newPage();
+      await libPage.goto(`chrome-extension://${ext.id}/library.html`);
+      // Chrome does not load media metadata in a background tab, and the import reads it.
+      await libPage.bringToFront();
+      const input = await libPage.waitForSelector("#import-file");
+      await input.uploadFile(JFK.path);
+      // The library copies the file, then moves to its session page.
+      const until = Date.now() + 90_000;
+      while (!libPage.url().includes("session.html") && Date.now() < until) await sleep(500);
+      const seven = new URL(libPage.url()).searchParams.get("id");
+      check(
+        !!seven,
+        "import opens the new session",
+        seven ? libPage.url() : JSON.stringify(await libPage.evaluate(() => ({
+          box: !document.getElementById("import-progress").hidden,
+          text: document.getElementById("import-text").textContent,
+          bar: document.getElementById("import-bar").value,
+          notice: document.getElementById("notice").textContent,
+          visible: document.visibilityState,
+        }))),
+      );
+      if (!seven) throw new Error("import did not open a session");
+      const sawPercent = await libPage
+        .waitForSelector("#transcript-percent:not([hidden])", { timeout: 60_000 })
+        .then(() => true, () => false);
+      check(sawPercent, "session page shows transcription progress as a percentage");
+      const t7 = await waitForTranscript(control2, seven, 240_000);
+      checkTranscript(t7, "mixed", 12_000);
+      // Read after transcribing: the session page completes what the import could not read.
+      const imported = await libPage.evaluate(async (id) => {
+        const root = await navigator.storage.getDirectory();
+        const dir = await (await root.getDirectoryHandle("sessions")).getDirectoryHandle(id);
+        return JSON.parse(await (await (await dir.getFileHandle("session.json")).getFile()).text());
+      }, seven);
+      check(
+        imported.endReason === "imported" && imported.file === "recording.wav" && imported.mode === "audio" && Math.abs(imported.durationMs - 11_000) < 500,
+        "imported file stored with its length and format",
+        `${imported.file}, ${imported.mode}, ${imported.durationMs} ms`,
+      );
+
+      await libPage.close();
     }
   } finally {
     await browser.close().catch(() => {});

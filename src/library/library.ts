@@ -4,8 +4,8 @@
 
 import { hydrateIcons, icon } from "../lib/icons";
 import { ACTIVE_KEY, errorMessage, type ActiveRecording } from "../lib/messages";
-import { EXPORT_DIR, FILES, formatBytes, formatDuration, type SessionMeta } from "../lib/session";
-import { deleteSession, listSessions, recordingFile, StorageWorker } from "../lib/storage";
+import { EXPORT_DIR, FILES, formatBytes, formatDuration, mediaFileName, type SessionMeta } from "../lib/session";
+import { deleteSession, importMedia, listSessions, recordingFile, StorageWorker } from "../lib/storage";
 import { readTranscript, TRANSCRIPTS_KEY, type TranscriptState, type TranscriptStatus } from "../lib/transcript";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -18,6 +18,7 @@ const search = $<HTMLInputElement>("search");
 let sessions: SessionMeta[] = [];
 let activeId: string | null = null;
 let transcriptStates: Record<string, TranscriptState | undefined> = {};
+let transcriptStatuses: Record<string, TranscriptStatus> = {};
 
 function showNotice(text: string | null): void {
   notice.textContent = text ?? "";
@@ -82,12 +83,12 @@ function download(url: string, filename: string): Promise<void> {
 
 async function exportSession(s: SessionMeta): Promise<void> {
   const exportedAt = new Date().toISOString();
-  const recording = URL.createObjectURL(await recordingFile(s.id));
+  const recording = URL.createObjectURL(await recordingFile(s.id, mediaFileName(s)));
   const json = URL.createObjectURL(
     new Blob([JSON.stringify({ ...s, exportedAt }, null, 2) + "\n"], { type: "application/json" }),
   );
   try {
-    await download(recording, `${EXPORT_DIR}/${s.id}/${FILES.recording}`);
+    await download(recording, `${EXPORT_DIR}/${s.id}/${mediaFileName(s)}`);
     await download(json, `${EXPORT_DIR}/${s.id}/${FILES.meta}`);
   } finally {
     URL.revokeObjectURL(recording);
@@ -98,6 +99,28 @@ async function exportSession(s: SessionMeta): Promise<void> {
     await worker.call({ op: "update", sessionId: s.id, patch: { exportedAt } });
   } finally {
     worker.terminate();
+  }
+}
+
+/** Copies a picked file into the library, then opens it and starts its transcript. */
+async function importFile(file: File): Promise<void> {
+  const box = $<HTMLElement>("import-progress");
+  const bar = $<HTMLProgressElement>("import-bar");
+  const button = $<HTMLButtonElement>("import");
+  $<HTMLElement>("import-name").textContent = file.name;
+  $<HTMLElement>("import-text").textContent = `Copying into Dohra… (${formatBytes(file.size)})`;
+  bar.value = 0;
+  box.hidden = false;
+  button.disabled = true;
+  showNotice(null);
+  try {
+    const meta = await importMedia(file, (f) => (bar.value = f));
+    location.href = `session.html?id=${encodeURIComponent(meta.id)}&transcribe=1`;
+  } catch (e) {
+    box.hidden = true;
+    showNotice(`Could not import ${file.name}: ${errorMessage(e)}`);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -165,6 +188,7 @@ function stateLabel(s: SessionMeta): [string, string] | null {
   if (s.state === "failed") return ["Failed", "bad"];
   if (s.state !== "complete") return ["Unfinished", "bad"];
   if (s.endReason === "recovered") return ["Recovered", "warn"];
+  if (s.endReason === "imported") return ["Imported", "info"];
   if (s.endReason === "tab-closed") return ["Tab closed", "warn"];
   return null;
 }
@@ -183,8 +207,16 @@ function renderItem(s: SessionMeta): HTMLLIElement {
   const title = el("div", "title", s.title);
   const label = stateLabel(s);
   if (label) title.append(el("span", `tag ${label[1]}`, label[0]));
-  const transcript = TRANSCRIPT_TAG[transcriptStates[s.id] ?? "none"];
-  if (transcript) title.append(el("span", `tag ${transcript[1]}`, transcript[0]));
+  const tState = transcriptStates[s.id] ?? "none";
+  const transcript = TRANSCRIPT_TAG[tState];
+  if (transcript) {
+    let text = transcript[0];
+    const st = transcriptStatuses[s.id];
+    if ((tState === "transcribing" || tState === "live") && st && s.durationMs > 0) {
+      text += ` ${Math.min(99, Math.floor((100 * st.doneMs) / s.durationMs))}%`;
+    }
+    title.append(el("span", `tag ${transcript[1]}`, text));
+  }
   info.append(title);
 
   const started = new Date(s.startedAt);
@@ -244,6 +276,7 @@ function render(): void {
 async function loadTranscriptStates(): Promise<void> {
   const { [TRANSCRIPTS_KEY]: live } = await chrome.storage.session.get(TRANSCRIPTS_KEY);
   const statuses = (live as Record<string, TranscriptStatus> | undefined) ?? {};
+  transcriptStatuses = statuses;
   const entries = await Promise.all(
     sessions.map(async (s) => [s.id, statuses[s.id]?.state ?? (await readTranscript(s.id))?.state] as const),
   );
@@ -260,6 +293,14 @@ async function refresh(): Promise<void> {
 
 async function main(): Promise<void> {
   hydrateIcons();
+  // Before the slow part below, so a file picked while the list loads is not missed.
+  const picker = $<HTMLInputElement>("import-file");
+  $<HTMLButtonElement>("import").addEventListener("click", () => picker.click());
+  picker.addEventListener("change", () => {
+    const file = picker.files?.[0];
+    picker.value = "";
+    if (file) void importFile(file);
+  });
   try {
     await refresh();
     const recovered = await recoverInterrupted();

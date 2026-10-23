@@ -4,8 +4,8 @@
 // transcribed can be read while it grows.
 
 import { errorMessage, type Reply } from "../lib/messages";
-import { formatBytes, formatDuration, type SessionMeta } from "../lib/session";
-import { getSession, recordingFile } from "../lib/storage";
+import { formatBytes, formatDuration, mediaFileName, type SessionMeta } from "../lib/session";
+import { getSession, recordingFile, StorageWorker } from "../lib/storage";
 import {
   floatToPcm,
   lineAt,
@@ -32,6 +32,8 @@ const search = $<HTMLInputElement>("search");
 const follow = $<HTMLInputElement>("follow");
 
 let meta: SessionMeta | null = null;
+/** While this page decodes and sends a recording: the step and how far it got. */
+let preparing: { text: string; fraction: number } | null = null;
 let transcript: Transcript | null = null;
 let status: TranscriptStatus | undefined;
 let roman = false;
@@ -132,27 +134,53 @@ function updateCurrent(): void {
   }
 }
 
+/** Shows the bar and percent, or hides them with a null fraction. */
+function showProgress(fraction: number | null): void {
+  const bar = $<HTMLProgressElement>("transcript-progress");
+  const percent = $<HTMLElement>("transcript-percent");
+  bar.hidden = percent.hidden = fraction === null;
+  if (fraction === null) return;
+  const f = Math.max(0, Math.min(1, fraction));
+  bar.value = f;
+  percent.textContent = `${Math.floor(f * 100)}%`;
+}
+
 function renderStatus(): void {
   const el = $<HTMLElement>("transcript-status");
   const empty = $<HTMLElement>("empty");
   const lines = transcript?.lines.length ?? 0;
   const state = status?.state ?? transcript?.state;
+  const totalMs = meta?.durationMs || status?.receivedMs || 0;
 
-  if (state === "live" || state === "transcribing") {
-    const progress = status ? ` — ${formatDuration(status.doneMs)} of ${formatDuration(status.receivedMs)} done` : "";
-    el.textContent = `${state === "live" ? "Recording and transcribing" : "Transcribing"}${progress}. Lines appear as each part finishes.`;
+  if (preparing) {
+    el.textContent = preparing.text;
+    showProgress(null);
+  } else if (state === "live" || state === "transcribing") {
+    const done = status?.doneMs ?? 0;
+    const parts = [
+      state === "live" ? "Recording and transcribing" : "Transcribing",
+      ...(status && totalMs ? [`${formatDuration(done)} of ${formatDuration(totalMs)}`] : []),
+      `${lines} lines so far`,
+    ];
+    el.textContent = parts.join(" · ");
     if (status?.error) el.textContent += ` (${status.error})`;
+    // While recording, the end keeps moving: measure against what has arrived.
+    const of = state === "live" ? status?.receivedMs || 0 : totalMs;
+    showProgress(of > 0 ? Math.min(0.99, done / of) : 0);
   } else if (state === "failed") {
     el.textContent = `Transcription failed: ${status?.error ?? transcript?.error ?? "unknown error"}`;
+    showProgress(null);
   } else if (transcript) {
     const lang = transcript.language === "hinglish" ? ", Hinglish" : transcript.language ? `, ${transcript.language}` : "";
     const model = MODEL_LABEL[transcript.model ?? ""] ?? transcript.model ?? "Whisper";
     el.textContent = `${lines} lines · ${model} model${lang}`;
+    showProgress(null);
   } else {
     el.textContent = "";
+    showProgress(null);
   }
 
-  const showEmpty = lines === 0 && state !== "live" && state !== "transcribing";
+  const showEmpty = lines === 0 && !preparing && state !== "live" && state !== "transcribing";
   empty.hidden = !showEmpty;
   if (showEmpty) void offerTranscription(state === "failed");
 }
@@ -193,28 +221,39 @@ async function transcribeRecording(): Promise<void> {
   if (!meta) return;
   const button = $<HTMLButtonElement>("transcribe");
   button.disabled = true;
-  const statusEl = $<HTMLElement>("transcript-status");
+  const step = (text: string, fraction = 0) => {
+    preparing = { text, fraction };
+    renderStatus();
+    showProgress(fraction);
+  };
   try {
-    statusEl.textContent = "Decoding the recording…";
-    const file = await recordingFile(id);
-    const length = Math.ceil((meta.durationMs / 1000 + 2) * 16000);
+    step("Reading the audio… (keep this page open until the audio is sent)");
+    const file = await recordingFile(id, mediaFileName(meta));
+    // decodeAudioData returns the whole file whatever this length; it only must be valid.
+    const length = Math.ceil((Math.max(meta.durationMs, 1000) / 1000 + 2) * 16000);
     const decoded = await new OfflineAudioContext(1, length, 16000).decodeAudioData(await file.arrayBuffer());
-    const mono = new Float32Array(decoded.length);
-    for (let c = 0; c < decoded.numberOfChannels; c++) {
-      const data = decoded.getChannelData(c);
-      for (let i = 0; i < data.length; i++) mono[i]! += data[i]! / decoded.numberOfChannels;
-    }
+    const channels = Array.from({ length: decoded.numberOfChannels }, (_, c) => decoded.getChannelData(c));
+    if (meta.durationMs === 0) await completeMeta({ durationMs: Math.round(decoded.duration * 1000) });
 
     await request({ type: "transcribe-start", sessionId: id });
+    // Mixed down to mono one block at a time, so the whole recording is not held twice.
     const block = BLOCK_SECONDS * 16000;
-    for (let start = 0; start < mono.length; start += block) {
-      const pcm = floatToPcm(mono.subarray(start, start + block));
+    const mono = new Float32Array(block);
+    for (let start = 0; start < decoded.length; start += block) {
+      const n = Math.min(block, decoded.length - start);
+      mono.fill(0);
+      for (const data of channels) {
+        for (let i = 0; i < n; i++) mono[i]! += data[start + i]! / channels.length;
+      }
+      const pcm = floatToPcm(mono.subarray(0, n));
       await request({ type: "transcribe-audio", sessionId: id, pcm: pcmToBase64(pcm) });
-      statusEl.textContent = `Sending audio to the companion… ${Math.round((100 * start) / mono.length)}%`;
+      step("Sending the audio to the companion… (keep this page open)", (start + n) / decoded.length);
     }
     await request({ type: "transcribe-stop", sessionId: id });
+    preparing = null;
     await reloadTranscript();
   } catch (e) {
+    preparing = null;
     showNotice(`Could not transcribe: ${errorMessage(e)}`);
     renderStatus();
   } finally {
@@ -241,6 +280,30 @@ function downloadText(): void {
 
 // ---- page ---------------------------------------------------------------------------
 
+function renderDetails(): void {
+  if (!meta) return;
+  const started = new Date(meta.startedAt);
+  $<HTMLElement>("details").textContent = [
+    started.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
+    formatDuration(meta.durationMs),
+    formatBytes(meta.bytes),
+    meta.mode === "audio" ? "audio" : `video ${meta.quality ?? ""}`.trim(),
+  ].join(" · ");
+}
+
+/** Fills in what an import could not read up front: length and picture size. */
+async function completeMeta(patch: Partial<SessionMeta>): Promise<void> {
+  if (!meta) return;
+  meta = { ...meta, ...patch };
+  renderDetails();
+  const worker = new StorageWorker();
+  try {
+    meta = await worker.call({ op: "update", sessionId: id, patch });
+  } finally {
+    worker.terminate();
+  }
+}
+
 async function main(): Promise<void> {
   hydrateIcons();
   meta = await getSession(id);
@@ -251,17 +314,18 @@ async function main(): Promise<void> {
   }
   document.title = `${meta.title} — Dohra`;
   $<HTMLElement>("title").textContent = meta.title;
-  const started = new Date(meta.startedAt);
-  $<HTMLElement>("details").textContent = [
-    started.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
-    formatDuration(meta.durationMs),
-    formatBytes(meta.bytes),
-    meta.mode === "audio" ? "audio" : `video ${meta.quality ?? ""}`.trim(),
-  ].join(" · ");
+  renderDetails();
 
   if (meta.state === "complete") {
     media.classList.toggle("audio-only", meta.mode === "audio");
-    media.src = URL.createObjectURL(await recordingFile(id));
+    media.addEventListener("loadedmetadata", () => {
+      if (!meta || meta.durationMs > 0 || !Number.isFinite(media.duration)) return;
+      void completeMeta({
+        durationMs: Math.round(media.duration * 1000),
+        ...(media.videoWidth > 0 ? { quality: `${media.videoWidth}x${media.videoHeight}`, mode: "video" as const } : {}),
+      });
+    });
+    media.src = URL.createObjectURL(await recordingFile(id, mediaFileName(meta)));
   } else {
     showNotice("This recording is not finished yet. Open the Library to recover it.");
   }
@@ -287,6 +351,16 @@ async function main(): Promise<void> {
   chrome.storage.session.onChanged.addListener((changes) => {
     if (TRANSCRIPTS_KEY in changes) void reloadTranscript();
   });
+
+  // Arriving from an import: start the transcript straight away.
+  if (new URLSearchParams(location.search).get("transcribe") === "1") {
+    history.replaceState(null, "", `session.html?id=${encodeURIComponent(id)}`);
+    const state = status?.state ?? transcript?.state;
+    if (!transcript?.lines.length && state !== "live" && state !== "transcribing") {
+      const info = (await request({ type: "companion-status" })) as CompanionInfo;
+      if (info.ready) await transcribeRecording();
+    }
+  }
 }
 
 void main().catch((e) => showNotice(errorMessage(e)));
