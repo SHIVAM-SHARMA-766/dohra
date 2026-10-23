@@ -7,52 +7,70 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <header>
-      <span class="brand"><span class="dot"></span>Dohra</span>
+    <header class="pop-head">
+      <span class="brand"><span class="logo"></span>Dohra</span>
       <nav>
-        <a href="#" id="open-library">Library</a>
-        <a href="#" id="open-settings">Settings</a>
+        <a href="#" id="open-library" class="icon-link" title="Library" aria-label="Library"><i data-icon="library"></i></a>
+        <a href="#" id="open-settings" class="icon-link" title="Settings" aria-label="Settings"><i data-icon="settings"></i></a>
       </nav>
     </header>
 
     <p id="error" class="banner error" hidden></p>
 
     <section id="idle" hidden>
-      <label class="field">
-        <span>Title</span>
-        <input id="title" type="text" maxlength="120" placeholder="e.g. DSA class — graphs" />
-      </label>
+      <div class="panel">
+        <label class="field">
+          <span>Recording title</span>
+          <input id="title" type="text" maxlength="120" placeholder="e.g. DSA class — graphs" />
+        </label>
+        <div id="summary" class="chips" aria-label="What is recorded"></div>
+      </div>
 
-      <label class="check" id="mic-switch" hidden>
-        <input id="mic" type="checkbox" />
-        <span>Include my microphone</span>
-      </label>
+      <div class="options">
+        <label class="switch-row" id="mic-switch" hidden>
+          <span><span class="label">Include my microphone</span></span>
+          <input id="mic" type="checkbox" class="switch" />
+        </label>
+        <label class="switch-row">
+          <span>
+            <span class="label">Save a copy to Downloads</span>
+            <span class="sub">Recording and transcript in Downloads/Dohra</span>
+          </span>
+          <input id="auto-export" type="checkbox" class="switch" />
+        </label>
+      </div>
 
-      <label class="check">
-        <input id="auto-export" type="checkbox" />
-        <span>Also save a copy to Downloads/Dohra</span>
-      </label>
-
-      <p id="summary" class="summary"></p>
       <p id="mic-help" class="banner warn" hidden>
         Dohra records your microphone too, and needs permission once.
         <a href="#" id="allow-mic">Allow microphone</a>
       </p>
-      <p id="companion" class="hint"></p>
 
-      <button id="start" class="primary">Start recording</button>
-      <p class="hint shortcut">Shortcut: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> starts or stops</p>
+      <button id="start" class="primary big start"><span class="rec-dot"></span>Start recording</button>
+      <p id="companion" class="status-dot"></p>
+      <p class="shortcut">Start or stop anywhere with <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>R</kbd></p>
     </section>
 
     <section id="recording" hidden>
-      <p id="rec-title" class="rec-title"></p>
-      <p id="rec-status" class="rec-status"></p>
-      <p id="timer" class="timer">00:00</p>
-      <p id="size" class="hint"></p>
-      <p id="transcript-status" class="hint center"></p>
-      <div class="row">
-        <button id="pause">Pause</button>
-        <button id="stop" class="danger">Stop</button>
+      <div class="live">
+        <div class="live-head">
+          <span id="rec-status" class="rec-status"></span>
+          <span id="size" class="size"></span>
+        </div>
+        <p id="timer" class="timer">00:00</p>
+        <p id="rec-title" class="rec-title"></p>
+      </div>
+
+      <div id="transcript-box" class="transcript-box" hidden>
+        <div class="transcript-head">
+          <span><i data-icon="text"></i> Transcript</span>
+          <span id="transcript-status"></span>
+        </div>
+        <progress id="transcript-progress" max="1" value="0"></progress>
+      </div>
+
+      <div class="controls">
+        <button id="pause"></button>
+        <button id="stop" class="danger"></button>
       </div>
     </section>
 

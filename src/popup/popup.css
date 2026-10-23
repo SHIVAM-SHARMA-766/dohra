@@ -1,106 +1,203 @@
 body {
-  width: 320px;
+  width: 340px;
+  min-height: 0;
   padding: 14px 16px 16px;
 }
 
-header {
+.pop-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 14px;
 }
 
+.pop-head nav {
+  display: flex;
+  gap: 2px;
+}
+
+.icon-link {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+}
+
+.icon-link:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.icon-link svg.icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---- idle ---- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 12px;
+}
+
 .field {
   display: block;
-  margin-bottom: 12px;
 }
 
 .field > span {
   display: block;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
-.check {
+.chips {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0;
-  cursor: pointer;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
 }
 
-#start {
+.options {
+  margin: 8px 2px 4px;
+}
+
+.options .switch-row {
+  padding: 8px 0;
+}
+
+.options .switch-row + .switch-row {
+  border-top: 1px solid var(--border);
+}
+
+.start {
   width: 100%;
-  margin-top: 4px;
+  margin: 10px 0 12px;
+}
+
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff6b6b;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.35);
+}
+
+#companion {
+  justify-content: center;
+  text-align: center;
+  margin-bottom: 8px;
 }
 
 .shortcut {
   text-align: center;
+  font-size: 12px;
+  color: var(--faint);
+  margin: 0;
 }
 
-.rec-title {
-  font-weight: 600;
-  margin: 0;
+/* ---- recording ---- */
+
+.live {
+  text-align: center;
+  padding: 18px 14px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  position: relative;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.live::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--gradient);
+}
+
+.live-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
 }
 
 .rec-status {
-  margin: 2px 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 650;
   color: var(--muted);
 }
 
 .rec-status[data-status="recording"] {
   color: var(--rec);
-  font-weight: 600;
 }
 
-.rec-status[data-status="recording"]::before {
-  content: "● ";
+.size {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .timer {
-  font: 600 40px/1.1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-weight: 650;
+  font-size: 46px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
-  text-align: center;
-  margin: 14px 0 2px;
+  margin: 14px 0 6px;
 }
 
-#size {
-  text-align: center;
+.rec-title {
+  margin: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.row {
+.transcript-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 12.5px;
+}
+
+.transcript-head {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+
+.transcript-head > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+#transcript-status {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-top: 12px;
-}
-
-.row button {
-  flex: 1;
-}
-
-.center {
-  text-align: center;
-}
-
-header nav {
-  display: flex;
-  gap: 12px;
-}
-
-.summary {
-  margin: 12px 0 8px;
-  font-size: 13px;
-}
-
-#companion {
-  margin-bottom: 10px;
-}
-
-#companion[data-ready="true"] {
-  color: var(--ok);
 }

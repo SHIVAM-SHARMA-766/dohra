@@ -2,6 +2,7 @@
 // not ready: microphone permission, the companion, and a speech model. Each step
 // shows its state and the page moves on by itself as each is done.
 
+import { hydrateIcons } from "../lib/icons";
 import type { Reply } from "../lib/messages";
 import { mountModelPicker } from "../lib/model-picker";
 import type { CompanionInfo } from "../lib/transcript";
@@ -150,6 +151,7 @@ function updateDone(): void {
   $("done").hidden = !(micDone && info?.ready);
 }
 
+hydrateIcons();
 renderPlatforms();
 $("allow-mic").addEventListener("click", () => void allowMic());
 void checkMic();

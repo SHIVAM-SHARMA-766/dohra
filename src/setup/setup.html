@@ -9,19 +9,26 @@
   </head>
   <body>
     <main>
-      <p class="brand"><span class="dot"></span>Dohra</p>
-      <h1>Set up Dohra</h1>
-      <p class="lead">
-        Dohra records your online classes on this computer, with a transcript you can search later. Nothing is
-        uploaded. Three steps, once.
-      </p>
+      <div class="hero">
+        <span class="logo hero-logo"></span>
+        <h1>Welcome to Dohra</h1>
+        <p class="lead">
+          Record your online classes on this computer, with a Hinglish transcript you can search later. Nothing is
+          uploaded. Three quick steps, once.
+        </p>
+        <div class="hero-chips">
+          <span class="chip"><i data-icon="video"></i>Full-quality video</span>
+          <span class="chip"><i data-icon="text"></i>Hinglish transcript</span>
+          <span class="chip"><i data-icon="shield"></i>Stays on your computer</span>
+        </div>
+      </div>
 
       <ol class="steps">
         <li class="step" id="step-mic">
           <h2>Allow the microphone</h2>
           <p>So your own questions and answers are in the recording too.</p>
           <p id="mic-status" class="state" role="status"></p>
-          <button id="allow-mic" class="primary" hidden>Allow microphone</button>
+          <button id="allow-mic" class="primary" hidden><i data-icon="mic"></i>Allow microphone</button>
         </li>
 
         <li class="step" id="step-companion">
@@ -53,7 +60,8 @@
         </li>
       </ol>
 
-      <section id="done" hidden>
+      <section id="done" class="done" hidden>
+        <span class="done-icon"><i data-icon="check"></i></span>
         <h2>You're all set</h2>
         <p>
           Open your class in a tab and click the Dohra icon, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.

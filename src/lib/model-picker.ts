@@ -75,7 +75,7 @@ export function mountModelPicker(container: HTMLElement, initial: CompanionInfo,
     const name = document.createElement("strong");
     name.textContent = m.label;
     head.append(name);
-    if (m.name === recommended) head.append(badge("Recommended for this computer"));
+    if (m.name === recommended) head.append(badge("Recommended for this computer", "accent"));
     if (m.active) head.append(badge("In use", "ok"));
     else if (m.installed) head.append(badge("Installed"));
 

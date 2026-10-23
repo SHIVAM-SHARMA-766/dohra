@@ -471,11 +471,11 @@ async function main() {
       choices: document.querySelectorAll('input[name="mode"], #quality, #language, #transcribe').length,
       // Rendered visibility, not just the attribute: CSS can override [hidden].
       micSwitchHidden: document.getElementById("mic-switch").offsetParent === null,
-      summary: document.getElementById("summary").textContent,
+      summary: [...document.querySelectorAll("#summary .chip")].map((c) => c.textContent).join(" · "),
     }));
     await popup.close().catch(() => {});
     check(quick.choices === 0 && quick.micSwitchHidden, "quick start offers no format, transcript or language choices");
-    check(quick.summary === "Audio + video · microphone · transcript", "quick start states what is recorded", quick.summary);
+    check(quick.summary === "Audio + video · Microphone · Transcript", "quick start states what is recorded", quick.summary);
     const one = await startRecording(browser, page, ext, control, { title: "E2E video", mic: process.env.E2E_MIC !== "0" });
     await sleep(6_000);
     await command(control, "pause");

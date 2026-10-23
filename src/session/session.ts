@@ -18,6 +18,7 @@ import {
   type TranscriptLine,
   type TranscriptStatus,
 } from "../lib/transcript";
+import { hydrateIcons } from "../lib/icons";
 import { hasDevanagari, searchKey, toRoman } from "../lib/translit";
 
 const MODEL_LABEL: Record<string, string> = { small: "Small", medium: "Medium", large: "High" };
@@ -78,6 +79,7 @@ function renderLines(): void {
     time.className = "time";
     time.textContent = formatDuration(line.startMs);
     const body = document.createElement("span");
+    body.className = "body";
     const label = SPEAKER_LABEL[line.speaker];
     if (label) {
       const speaker = document.createElement("span");
@@ -240,6 +242,7 @@ function downloadText(): void {
 // ---- page ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  hydrateIcons();
   meta = await getSession(id);
   if (!meta) {
     $<HTMLElement>("title").textContent = "Recording not found";

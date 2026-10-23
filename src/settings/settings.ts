@@ -3,6 +3,7 @@
 // copy, and the speech model.
 
 import type { Reply } from "../lib/messages";
+import { hydrateIcons } from "../lib/icons";
 import { mountModelPicker } from "../lib/model-picker";
 import { loadSettings, saveSettings } from "../lib/settings";
 import type { CompanionInfo } from "../lib/transcript";
@@ -27,7 +28,7 @@ async function showMicPermission(): Promise<void> {
   el.dataset.granted = String(state === "granted");
   el.replaceChildren();
   if (state === "granted") {
-    el.textContent = "Microphone access is allowed.";
+    el.textContent = "Access allowed";
     return;
   }
   el.textContent = "Microphone access is not allowed yet. ";
@@ -71,6 +72,7 @@ async function showCompanion(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  hydrateIcons();
   const settings = await loadSettings();
   micSwitch.checked = settings.micSwitchInPopup;
   autoExport.checked = settings.autoExport;

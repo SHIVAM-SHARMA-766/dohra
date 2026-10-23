@@ -8,26 +8,37 @@
     <link rel="stylesheet" href="library.css" />
   </head>
   <body>
-    <header class="top">
-      <span class="brand"><span class="dot"></span>Dohra</span>
-      <span class="top-right">
-        <span id="usage" class="hint"></span>
-        <a href="settings.html">Settings</a>
-      </span>
+    <header class="appbar">
+      <a href="library.html" class="brand"><span class="logo"></span>Dohra</a>
+      <span class="spacer"></span>
+      <nav>
+        <a href="library.html" class="navlink" aria-current="page"><i data-icon="library"></i><span class="label">Library</span></a>
+        <a href="settings.html" class="navlink"><i data-icon="settings"></i><span class="label">Settings</span></a>
+      </nav>
     </header>
 
     <main>
       <p id="notice" class="banner warn" hidden></p>
 
-      <div class="toolbar">
-        <h1>Recordings</h1>
-        <input id="search" type="text" placeholder="Search titles" aria-label="Search titles" />
+      <div class="page-head">
+        <div>
+          <h1>Recordings</h1>
+          <p class="sub"><span id="count"></span><span id="usage"></span></p>
+        </div>
+        <label class="search">
+          <i data-icon="search"></i>
+          <input id="search" type="text" placeholder="Search titles" aria-label="Search titles" />
+        </label>
       </div>
 
       <ul id="list" class="list"></ul>
-      <p id="empty" class="hint" hidden>
-        No recordings yet. Open a class in a tab, click the Dohra icon, and press Start.
-      </p>
+
+      <div id="empty" class="empty card" hidden>
+        <div class="empty-art"><span class="logo"></span></div>
+        <h2>No recordings yet</h2>
+        <p>Open your class in a tab, click the Dohra icon in the toolbar and press <strong>Start recording</strong>.</p>
+        <p class="hint">Or press <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>R</kbd> on the class tab.</p>
+      </div>
     </main>
 
     <script src="library.js"></script>

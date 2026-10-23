@@ -3,6 +3,7 @@
 // the Downloads copy, and (if enabled on the Settings page) the microphone.
 
 import { ACTIVE_KEY, LAST_ERROR_KEY, liveDuration, type ActiveRecording, type BackgroundRequest, type Reply } from "../lib/messages";
+import { hydrateIcons, icon } from "../lib/icons";
 import { formatBytes, formatDuration } from "../lib/session";
 import { loadSettings, micEnabled, saveSettings, type Settings } from "../lib/settings";
 import { TRANSCRIPTS_KEY, type CompanionInfo, type TranscriptStatus } from "../lib/transcript";
@@ -50,10 +51,21 @@ async function micGranted(): Promise<boolean> {
 
 // ---- idle view ----------------------------------------------------------------------
 
+function chip(iconName: string, text: string): HTMLSpanElement {
+  const c = document.createElement("span");
+  c.className = "chip";
+  c.append(icon(iconName), text);
+  return c;
+}
+
 /** Shows what will be recorded, and blocks Start while the microphone is needed but not allowed. */
 async function renderSummary(): Promise<void> {
   const mic = micEnabled(settings);
-  $<HTMLElement>("summary").textContent = ["Audio + video", ...(mic ? ["microphone"] : []), "transcript"].join(" · ");
+  $<HTMLElement>("summary").replaceChildren(
+    chip("video", "Audio + video"),
+    ...(mic ? [chip("mic", "Microphone")] : []),
+    chip("text", "Transcript"),
+  );
 
   const blocked = mic && !(await micGranted());
   $<HTMLElement>("mic-help").hidden = !blocked;
@@ -62,8 +74,9 @@ async function renderSummary(): Promise<void> {
 
 async function showCompanion(): Promise<void> {
   const el = $<HTMLElement>("companion");
-  el.textContent = "Checking the transcription companion…";
+  el.textContent = "Checking transcription…";
   delete el.dataset.ready;
+  delete el.dataset.tone;
   let info: CompanionInfo | undefined;
   try {
     info = (await request({ target: "background", type: "companion-status" })) as CompanionInfo | undefined;
@@ -78,12 +91,13 @@ async function showCompanion(): Promise<void> {
     return;
   }
   el.dataset.ready = String(info.ready);
+  el.dataset.tone = info.ready ? "ok" : "warn";
   if (info.ready) {
     const model = info.models.find((m) => m.active)?.label ?? info.model;
-    el.textContent = `Transcript with the ${model} speech model`;
+    el.textContent = `Transcription ready · ${model} model`;
     return;
   }
-  el.textContent = `No transcript for now: ${info.problems[0] ?? "the companion is not ready."} `;
+  el.textContent = `No transcript yet: ${info.problems[0] ?? "the companion is not ready."} `;
   const link = document.createElement("a");
   link.href = "#";
   link.textContent = "Finish setup";
@@ -142,16 +156,21 @@ const STATUS_TEXT: Record<ActiveRecording["status"], string> = {
 };
 
 function renderTranscriptStatus(): void {
-  const el = $<HTMLElement>("transcript-status");
   const t = active ? transcripts[active.sessionId] : undefined;
-  if (!t) {
-    el.textContent = "";
-    return;
-  }
+  $<HTMLElement>("transcript-box").hidden = !t;
+  if (!t) return;
+  const el = $<HTMLElement>("transcript-status");
+  const bar = $<HTMLProgressElement>("transcript-progress");
+  bar.max = Math.max(t.receivedMs, 1);
+  bar.value = t.doneMs;
   el.textContent =
     t.state === "failed"
-      ? `Transcript: ${t.error ?? "failed"}`
-      : `Transcript: ${formatDuration(t.doneMs)} of ${formatDuration(t.receivedMs)} done${t.error ? ` (${t.error})` : ""}`;
+      ? (t.error ?? "failed")
+      : `${formatDuration(t.doneMs)} of ${formatDuration(t.receivedMs)}${t.error ? ` · ${t.error}` : ""}`;
+}
+
+function setButton(b: HTMLButtonElement, iconName: string, text: string): void {
+  b.replaceChildren(icon(iconName), text);
 }
 
 function tick(): void {
@@ -167,15 +186,23 @@ function render(): void {
 
   $<HTMLElement>("rec-title").textContent = active.title;
   const status = $<HTMLElement>("rec-status");
-  status.textContent = STATUS_TEXT[active.status];
+  status.replaceChildren();
+  if (active.status === "recording") {
+    const dot = document.createElement("span");
+    dot.className = "pulse";
+    status.append(dot);
+  }
+  status.append(STATUS_TEXT[active.status]);
   status.dataset.status = active.status;
-  $<HTMLElement>("size").textContent = `${formatBytes(active.progress.bytes)} saved`;
+  $<HTMLElement>("size").textContent = formatBytes(active.progress.bytes);
   renderTranscriptStatus();
 
   const busy = active.status === "finalizing" || active.status === "exporting" || active.status === "starting";
   pauseButton.disabled = busy;
   stopButton.disabled = busy;
-  pauseButton.textContent = active.status === "paused" ? "Resume" : "Pause";
+  if (active.status === "paused") setButton(pauseButton, "record", "Resume");
+  else setButton(pauseButton, "pause", "Pause");
+  setButton(stopButton, "stop", "Stop");
 
   tick();
   if (active.status === "recording") timer = window.setInterval(tick, 500);
@@ -184,6 +211,7 @@ function render(): void {
 // ---- wiring -------------------------------------------------------------------------
 
 async function main(): Promise<void> {
+  hydrateIcons();
   const stored = await chrome.storage.session.get([ACTIVE_KEY, LAST_ERROR_KEY, TRANSCRIPTS_KEY]);
   active = (stored[ACTIVE_KEY] as ActiveRecording | undefined) ?? null;
   transcripts = (stored[TRANSCRIPTS_KEY] as Record<string, TranscriptStatus> | undefined) ?? {};

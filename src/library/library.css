@@ -1,135 +1,180 @@
-.top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.top-right {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
 main {
-  max-width: 880px;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 28px 24px 48px;
 }
 
-.toolbar {
+.page-head {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   flex-wrap: wrap;
-  margin: 8px 0 12px;
+  margin-bottom: 18px;
 }
 
-.toolbar h1 {
-  font-size: 20px;
+.page-head h1 {
   margin: 0;
 }
 
-.toolbar input {
-  max-width: 260px;
+.page-head .sub {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.page-head .sub span + span:not(:empty)::before {
+  content: " · ";
+}
+
+.page-head .search {
+  width: min(300px, 100%);
 }
 
 .list {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  gap: 10px;
 }
 
 .item {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 
-.item .info {
+.item:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+.thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--gradient);
+  color: #fff;
+  border: 0;
+  padding: 0;
+  box-shadow: 0 4px 14px rgb(91 76 240 / 0.3);
+}
+
+.thumb svg.icon {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.thumb.muted {
+  background: var(--surface-3);
+  color: var(--faint);
+  box-shadow: none;
+}
+
+.thumb.muted svg.icon {
+  fill: none;
+}
+
+.info {
   min-width: 0;
 }
 
-.item .title {
-  font-weight: 600;
+.title {
+  font-weight: 650;
+  font-size: 15px;
   overflow-wrap: anywhere;
 }
 
-.item .meta {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 2px;
+.title .tag {
+  margin-left: 6px;
 }
 
-.item .hash {
-  font: 12px ui-monospace, monospace;
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 5px;
   color: var(--muted);
-  margin-top: 2px;
+  font-size: 12.5px;
 }
 
-.item .error-text {
+.meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.meta svg.icon {
+  width: 13px;
+  height: 13px;
+  color: var(--faint);
+}
+
+.extra {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.hash {
+  font-family: var(--mono);
+}
+
+.error-text {
   color: var(--error-text);
-  font-size: 13px;
-  margin-top: 2px;
-}
-
-.item .hint {
-  margin: 2px 0 0;
+  font-size: 12.5px;
+  margin-top: 4px;
 }
 
 .actions {
   display: flex;
-  gap: 6px;
-  flex-shrink: 0;
+  gap: 4px;
+  align-items: center;
 }
 
-.tag {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 1px 7px;
-  border-radius: 999px;
-  vertical-align: 2px;
+.empty {
+  text-align: center;
+  padding: 44px 24px;
 }
 
-.tag.live {
-  background: var(--rec);
-  color: #fff;
+.empty-art {
+  display: grid;
+  place-items: center;
+  margin-bottom: 14px;
 }
 
-.tag.warn {
-  background: var(--warn-bg);
-  color: var(--warn-text);
+.empty-art .logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
 }
 
-.tag.info {
-  background: var(--surface);
-  color: var(--accent);
-  border: 1px solid var(--border);
+.empty p {
+  color: var(--muted);
+  margin: 6px auto;
+  max-width: 420px;
 }
 
-.tag.ok {
-  background: var(--surface);
-  color: var(--ok);
-  border: 1px solid var(--border);
-}
-
-.tag.bad {
-  background: var(--error-bg);
-  color: var(--error-text);
-}
-
-@media (max-width: 600px) {
+@media (max-width: 640px) {
+  main {
+    padding: 20px 16px 40px;
+  }
   .item {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: auto minmax(0, 1fr);
   }
   .actions {
+    grid-column: 1 / -1;
     flex-wrap: wrap;
   }
 }

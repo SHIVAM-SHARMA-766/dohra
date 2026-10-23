@@ -7,12 +7,30 @@
     <link rel="stylesheet" href="ui.css" />
     <style>
       main {
-        max-width: 520px;
-        margin: 64px auto;
+        max-width: 480px;
+        margin: 80px auto;
         padding: 0 16px;
+      }
+      .card {
+        padding: 32px 28px;
+        text-align: center;
+      }
+      .card .logo {
+        display: inline-block;
+        width: 52px;
+        height: 52px;
+        border-radius: 15px;
+        margin-bottom: 14px;
+      }
+      .card p {
+        color: var(--muted);
+      }
+      #allow {
+        margin-top: 8px;
       }
       #status {
         font-weight: 600;
+        color: var(--text);
       }
       #status[data-state="granted"] {
         color: var(--ok);
@@ -21,15 +39,16 @@
   </head>
   <body>
     <main>
-      <p class="brand"><span class="dot"></span>Dohra</p>
-      <h1>Allow the microphone</h1>
-      <p>
-        To include your own voice in recordings, Dohra needs microphone access. The browser only lets an
-        extension ask for this from a visible page, which is why this page exists. You need to do this once.
-      </p>
-      <p>Audio stays on this computer. Nothing is uploaded.</p>
-      <p><button id="allow" class="primary">Allow microphone</button></p>
-      <p id="status" role="status"></p>
+      <div class="card">
+        <span class="logo"></span>
+        <h1>Allow the microphone</h1>
+        <p>
+          So your own voice is in recordings too. The browser only lets an extension ask from a visible page, so this
+          page asks once. Audio stays on this computer.
+        </p>
+        <button id="allow" class="primary big">Allow microphone</button>
+        <p id="status" role="status"></p>
+      </div>
     </main>
     <script src="permissions.js"></script>
   </body>

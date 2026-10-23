@@ -8,59 +8,85 @@
     <link rel="stylesheet" href="settings.css" />
   </head>
   <body>
-    <header class="top">
-      <a href="library.html" class="back">← Library</a>
-      <span class="brand"><span class="dot"></span>Dohra</span>
+    <header class="appbar">
+      <a href="library.html" class="brand"><span class="logo"></span>Dohra</a>
+      <span class="spacer"></span>
+      <nav>
+        <a href="library.html" class="navlink"><i data-icon="library"></i><span class="label">Library</span></a>
+        <a href="settings.html" class="navlink" aria-current="page"><i data-icon="settings"></i><span class="label">Settings</span></a>
+      </nav>
     </header>
 
     <main>
       <h1>Settings</h1>
+      <p class="lead">Dohra picks the best format by itself. These are the few things you can change.</p>
 
-      <section>
-        <h2>Every recording</h2>
-        <ul class="fixed">
-          <li><strong>Audio and video</strong>, at the best quality your screen allows.</li>
-          <li><strong>A transcript</strong>, made on this computer by the companion while you record.</li>
-          <li><strong>Written as Hinglish</strong>: Hindi in Roman script the way you would type it ("theek hai"), English as English, mixed freely.</li>
-          <li><strong>Your microphone</strong>, unless you allow switching it off below.</li>
+      <section class="card">
+        <div class="section-title">
+          <span class="section-icon"><i data-icon="sparkles"></i></span>
+          <div>
+            <h2>Every recording</h2>
+            <p>Always the same, so nothing to choose before class.</p>
+          </div>
+        </div>
+        <ul class="features">
+          <li><i data-icon="video"></i><span><strong>Audio and video</strong> at the best quality your screen allows</span></li>
+          <li><i data-icon="mic"></i><span><strong>Your microphone</strong>, unless you allow switching it off below</span></li>
+          <li>
+            <i data-icon="text"></i>
+            <span><strong>A transcript in Hinglish</strong>: Hindi in Roman script ("theek hai"), English as English</span>
+          </li>
+          <li><i data-icon="shield"></i><span><strong>Private</strong>: everything stays on this computer</span></li>
         </ul>
       </section>
 
-      <section>
-        <h2>Microphone</h2>
-        <label class="check">
-          <input id="mic-switch" type="checkbox" />
-          <span>Show a microphone switch in the quick-start popup</span>
-        </label>
-        <p class="hint">
-          Off: your microphone is recorded every time and the popup does not ask. On: the popup shows
-          "Include my microphone", and you can untick it for a recording.
-        </p>
-        <p id="mic-permission" class="hint"></p>
-      </section>
-
-      <section>
-        <h2>Downloads copy</h2>
-        <label class="check">
-          <input id="auto-export" type="checkbox" />
-          <span>Copy each finished recording and transcript to Downloads/Dohra</span>
-        </label>
-        <p class="hint">
-          The copy survives removing the extension. Without it, the library inside the browser is the only copy.
-        </p>
-      </section>
-
-      <section>
-        <h2>Speech model</h2>
-        <p class="hint">
-          Used for every transcript. Switching applies to everything not transcribed yet, including a class in
-          progress.
-        </p>
-        <p id="companion" role="status">Checking…</p>
+      <section class="card">
+        <div class="section-title">
+          <span class="section-icon"><i data-icon="cpu"></i></span>
+          <div>
+            <h2>Speech model</h2>
+            <p>Used for every transcript. A switch applies to everything not transcribed yet, even a class in progress.</p>
+          </div>
+        </div>
+        <p id="companion" class="status-dot" role="status">Checking…</p>
         <div id="models" class="models"></div>
       </section>
 
-      <p id="saved" class="hint" aria-live="polite"></p>
+      <section class="card">
+        <div class="section-title">
+          <span class="section-icon"><i data-icon="mic"></i></span>
+          <div>
+            <h2>Microphone</h2>
+            <p id="mic-permission" class="status-dot"></p>
+          </div>
+        </div>
+        <label class="switch-row">
+          <span>
+            <span class="label">Show a microphone switch in the popup</span>
+            <span class="sub">Off: your microphone is always recorded and the popup does not ask.</span>
+          </span>
+          <input id="mic-switch" type="checkbox" class="switch" />
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="section-title">
+          <span class="section-icon"><i data-icon="folder"></i></span>
+          <div>
+            <h2>Downloads copy</h2>
+            <p>A copy survives removing the extension.</p>
+          </div>
+        </div>
+        <label class="switch-row">
+          <span>
+            <span class="label">Copy each recording and transcript to Downloads/Dohra</span>
+            <span class="sub">Without it, the library inside the browser is the only copy.</span>
+          </span>
+          <input id="auto-export" type="checkbox" class="switch" />
+        </label>
+      </section>
+
+      <p id="saved" class="toast" aria-live="polite"></p>
     </main>
 
     <script src="settings.js"></script>

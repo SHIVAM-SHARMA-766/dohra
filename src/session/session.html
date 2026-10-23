@@ -8,39 +8,56 @@
     <link rel="stylesheet" href="session.css" />
   </head>
   <body>
-    <header class="top">
-      <a href="library.html" class="back">← Library</a>
-      <span class="brand"><span class="dot"></span>Dohra</span>
+    <header class="appbar">
+      <a href="library.html" class="brand"><span class="logo"></span>Dohra</a>
+      <span class="spacer"></span>
+      <nav>
+        <a href="library.html" class="navlink"><i data-icon="library"></i><span class="label">Library</span></a>
+        <a href="settings.html" class="navlink"><i data-icon="settings"></i><span class="label">Settings</span></a>
+      </nav>
     </header>
 
     <main>
+      <a href="library.html" class="back"><i data-icon="back"></i>All recordings</a>
       <p id="notice" class="banner warn" hidden></p>
       <h1 id="title"></h1>
-      <p id="details" class="hint"></p>
+      <p id="details" class="details"></p>
 
       <div class="layout">
         <section class="player">
           <video id="media" controls preload="metadata"></video>
         </section>
 
-        <section class="transcript" aria-label="Transcript">
+        <section class="transcript card" aria-label="Transcript">
           <div class="transcript-bar">
-            <input id="search" type="text" placeholder="Search the transcript" aria-label="Search the transcript" />
-            <div id="script" class="segmented small" role="radiogroup" aria-label="Script" hidden>
-              <label><input type="radio" name="script" value="native" checked /><span>देवनागरी</span></label>
-              <label><input type="radio" name="script" value="roman" /><span>Roman</span></label>
+            <div class="bar-title">
+              <span class="section-icon"><i data-icon="text"></i></span>
+              <div>
+                <h2>Transcript</h2>
+                <p id="transcript-status" class="status"></p>
+              </div>
             </div>
-            <label class="check small"><input id="follow" type="checkbox" checked /><span>Follow</span></label>
+            <div class="bar-tools">
+              <label class="search">
+                <i data-icon="search"></i>
+                <input id="search" type="text" placeholder="Search the transcript" aria-label="Search the transcript" />
+              </label>
+              <div id="script" class="segmented" role="radiogroup" aria-label="Script" hidden>
+                <label><input type="radio" name="script" value="native" checked /><span>देवनागरी</span></label>
+                <label><input type="radio" name="script" value="roman" /><span>Roman</span></label>
+              </div>
+              <label class="follow"><input id="follow" type="checkbox" class="switch" checked /><span>Follow</span></label>
+            </div>
           </div>
-          <p id="transcript-status" class="hint"></p>
           <div id="empty" class="empty" hidden>
+            <span class="section-icon big"><i data-icon="sparkles"></i></span>
             <p id="empty-text"></p>
             <button id="transcribe" class="primary" hidden>Transcribe this recording</button>
             <p class="hint"><a href="setup.html">Set up transcription</a></p>
           </div>
           <ol id="lines" class="lines"></ol>
           <div class="transcript-actions">
-            <button id="download-txt" hidden>Download transcript (.txt)</button>
+            <button id="download-txt" class="small" hidden><i data-icon="download"></i>Download .txt</button>
           </div>
         </section>
       </div>

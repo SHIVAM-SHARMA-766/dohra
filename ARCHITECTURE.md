@@ -39,7 +39,7 @@ context can change it safely.
 | `src/session/` | One recording: player and transcript, seek-on-click, follow, search, script toggle, `.txt` download, and transcribing a recording after the fact. |
 | `src/setup/` | First-run setup, opened on install: microphone, companion install commands with a live check, and the speech-model choice. |
 | `src/permissions/` | One-time microphone grant (see "Microphone" below). |
-| `src/lib/` | Shared code: settings, the session format, messages, storage helpers, the WebM patcher, the transcript format, Devanagari-to-Roman transliteration, and the speech-model list. |
+| `src/lib/` | Shared code: settings, the session format, messages, storage helpers, the WebM patcher, the transcript format, Devanagari-to-Roman transliteration, the speech-model list, and the line icons. `src/ui.css` is the design system every page builds on: colour tokens for light and dark, buttons, switches, cards, chips. |
 | `companion/` | The transcription companion: native messaging host, chunking, the Whisper queue, crash-safe session store, model downloads, and the installer. See "Transcription" below. |
 | `scripts/` | Build (esbuild), packaging, icon rendering, the GStreamer playback check, and the end-to-end test. |
 | `test/` | Unit tests for the extension's pure logic. The companion's tests live beside its code (`go test ./...`). |

@@ -2,6 +2,7 @@
 // opens them, exports them to Downloads, deletes them, and finalizes recordings
 // that a crash left unfinished.
 
+import { hydrateIcons, icon } from "../lib/icons";
 import { ACTIVE_KEY, errorMessage, type ActiveRecording } from "../lib/messages";
 import { EXPORT_DIR, FILES, formatBytes, formatDuration, type SessionMeta } from "../lib/session";
 import { deleteSession, listSessions, recordingFile, StorageWorker } from "../lib/storage";
@@ -10,7 +11,7 @@ import { readTranscript, TRANSCRIPTS_KEY, type TranscriptState, type TranscriptS
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const list = $<HTMLUListElement>("list");
-const empty = $<HTMLParagraphElement>("empty");
+const empty = $<HTMLElement>("empty");
 const notice = $<HTMLParagraphElement>("notice");
 const search = $<HTMLInputElement>("search");
 
@@ -53,7 +54,7 @@ async function recoverInterrupted(): Promise<number> {
 
 async function updateUsage(): Promise<void> {
   const { usage = 0 } = await navigator.storage.estimate();
-  $<HTMLElement>("usage").textContent = `${formatBytes(usage)} used in the browser`;
+  $<HTMLElement>("usage").textContent = `${formatBytes(usage)} used`;
 }
 
 // ---- actions ------------------------------------------------------------------------
@@ -128,10 +129,27 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return node;
 }
 
-function button(label: string, onClick: (b: HTMLButtonElement) => void, className?: string): HTMLButtonElement {
-  const b = el("button", className, label);
+function button(
+  label: string,
+  onClick: (b: HTMLButtonElement) => void,
+  opts: { className?: string; iconName?: string; iconOnly?: boolean } = {},
+): HTMLButtonElement {
+  const b = el("button", opts.className);
+  if (opts.iconName) b.append(icon(opts.iconName));
+  if (opts.iconOnly) {
+    b.title = label;
+    b.setAttribute("aria-label", label);
+  } else {
+    b.append(label);
+  }
   b.addEventListener("click", () => onClick(b));
   return b;
+}
+
+function metaItem(iconName: string, text: string): HTMLSpanElement {
+  const span = el("span");
+  span.append(icon(iconName), text);
+  return span;
 }
 
 const TRANSCRIPT_TAG: Record<TranscriptState | "none", [string, string] | null> = {
@@ -153,43 +171,64 @@ function stateLabel(s: SessionMeta): [string, string] | null {
 
 function renderItem(s: SessionMeta): HTMLLIElement {
   const li = el("li", "item");
-  const info = el("div", "info");
+  const playable = s.state === "complete";
 
+  const thumb = el("button", `thumb${playable ? "" : " muted"}`);
+  thumb.append(icon(playable ? "play" : "video"));
+  thumb.title = playable ? "Open" : s.title;
+  thumb.disabled = !playable;
+  thumb.addEventListener("click", () => open(s));
+
+  const info = el("div", "info");
   const title = el("div", "title", s.title);
   const label = stateLabel(s);
-  if (label) title.append(" ", el("span", `tag ${label[1]}`, label[0]));
+  if (label) title.append(el("span", `tag ${label[1]}`, label[0]));
   const transcript = TRANSCRIPT_TAG[transcriptStates[s.id] ?? "none"];
-  if (transcript) title.append(" ", el("span", `tag ${transcript[1]}`, transcript[0]));
+  if (transcript) title.append(el("span", `tag ${transcript[1]}`, transcript[0]));
   info.append(title);
 
   const started = new Date(s.startedAt);
-  const details = [
-    started.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }),
-    started.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
-    formatDuration(s.durationMs),
-    formatBytes(s.bytes),
-    s.mode === "audio" ? "audio" : `video ${s.quality ?? ""}`.trim(),
-    ...(s.mic ? ["+ mic"] : []),
-  ];
-  info.append(el("div", "meta", details.join(" · ")));
+  const meta = el("div", "meta");
+  meta.append(
+    metaItem(
+      "clock",
+      `${started.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}, ${started.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`,
+    ),
+    metaItem("play", formatDuration(s.durationMs)),
+    metaItem("disk", formatBytes(s.bytes)),
+    metaItem(s.mode === "audio" ? "mic" : "video", s.mode === "audio" ? "Audio" : `${s.quality ?? "Video"}`),
+    ...(s.mic ? [metaItem("mic", "Mic")] : []),
+  );
+  info.append(meta);
   if (s.error) info.append(el("div", "error-text", s.error));
-  if (s.sha256) {
-    const hash = el("div", "hash", `sha256 ${s.sha256.slice(0, 16)}…`);
-    hash.title = s.sha256;
-    info.append(hash);
+  const extra: string[] = [];
+  if (s.exportedAt) extra.push(`Copied to Downloads/${EXPORT_DIR}/${s.id}/`);
+  if (extra.length || s.sha256) {
+    const row = el("div", "extra", extra.join(""));
+    if (s.sha256) {
+      const hash = el("span", "hash", `${extra.length ? " · " : ""}sha256 ${s.sha256.slice(0, 12)}…`);
+      hash.title = s.sha256;
+      row.append(hash);
+    }
+    info.append(row);
   }
-  if (s.exportedAt) info.append(el("div", "hint", `Copied to Downloads/${EXPORT_DIR}/${s.id}/`));
 
   const actions = el("div", "actions");
-  if (s.state === "complete") {
+  if (playable) {
     actions.append(
-      button("Open", () => open(s), "primary"),
-      button(s.exportedAt ? "Save again" : "Save to Downloads", (b) => void run(() => exportSession(s), b)),
+      button("Open", () => open(s), { className: "primary small" }),
+      button(s.exportedAt ? "Save to Downloads again" : "Save to Downloads", (b) => void run(() => exportSession(s), b), {
+        className: "ghost small",
+        iconName: "download",
+        iconOnly: true,
+      }),
     );
   }
-  if (s.id !== activeId) actions.append(button("Delete", (b) => void run(() => remove(s), b)));
+  if (s.id !== activeId) {
+    actions.append(button("Delete", (b) => void run(() => remove(s), b), { className: "ghost small", iconName: "trash", iconOnly: true }));
+  }
 
-  li.append(info, actions);
+  li.append(thumb, info, actions);
   return li;
 }
 
@@ -198,6 +237,7 @@ function render(): void {
   const shown = sessions.filter((s) => !query || s.title.toLowerCase().includes(query));
   list.replaceChildren(...shown.map(renderItem));
   empty.hidden = sessions.length > 0;
+  $<HTMLElement>("count").textContent = sessions.length === 1 ? "1 recording" : `${sessions.length} recordings`;
   if (sessions.length > 0 && shown.length === 0) list.append(el("li", "hint", "No titles match."));
 }
 
@@ -219,6 +259,7 @@ async function refresh(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  hydrateIcons();
   try {
     await refresh();
     const recovered = await recoverInterrupted();
