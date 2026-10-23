@@ -3,3 +3,7 @@ dist/
 release/
 *.zip
 .e2e/
+
+# companion builds
+companion/dohra-companion
+companion/dist/
