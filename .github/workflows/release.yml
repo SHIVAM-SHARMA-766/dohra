@@ -1,6 +1,7 @@
 name: Release
 
-# Push a tag like v0.1.0 (matching package.json) to publish the extension zip.
+# Push a tag like v0.2.0 (matching package.json) to publish the extension zip and
+# the companion for each platform.
 on:
   push:
     tags: ["v*"]
@@ -11,22 +12,38 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: companion/go.mod
+          cache-dependency-path: companion/go.mod
       - run: npm ci
       - name: Tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - run: npm run typecheck
       - run: npm test
       - run: npm run package
+      - name: Build the companion
+        working-directory: companion
+        run: |
+          go test ./...
+          for target in linux/amd64 linux/arm64 windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
+            os=${target%/*}; arch=${target#*/}
+            ext=""; [ "$os" = windows ] && ext=".exe"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=${GITHUB_REF_NAME#v}" \
+              -o "../release/dohra-companion-$os-$arch$ext" .
+          done
+          cd ../release && sha256sum dohra-* > SHA256SUMS
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "release/dohra-${GITHUB_REF_NAME#v}.zip" \
+          gh release create "$GITHUB_REF_NAME" release/* \
             --title "Dohra $GITHUB_REF_NAME" --generate-notes

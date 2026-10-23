@@ -8,17 +8,30 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: companion/go.mod
+          cache-dependency-path: companion/go.mod
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+      - name: Companion tests
+        working-directory: companion
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
+          GOOS=windows go vet ./...
+          GOOS=darwin go vet ./...
+          go test -race ./...
 
       # The end-to-end test needs Chromium, which (unlike branded Chrome) still loads
       # unpacked extensions. xvfb-run is preinstalled on ubuntu runners.
@@ -27,7 +40,13 @@ jobs:
         with:
           chrome-version: latest
       # Recordings must also play in GStreamer, which desktop players on Linux use.
-      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-good
+      # ImageMagick's `import` captures the screen if the extension popup fails to open.
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends python3-gi gir1.2-gstreamer-1.0 gstreamer1.0-plugins-good imagemagick
+      # whisper.cpp, the small model and the speech sample (~200 MB), all pinned by hash.
+      - uses: actions/cache@v4
+        with:
+          path: .e2e-cache
+          key: e2e-cache-${{ hashFiles('companion/internal/config/config.go', 'scripts/e2e.mjs') }}
       - run: npm run e2e
         env:
           CHROME: ${{ steps.chromium.outputs.chrome-path }}
@@ -36,5 +55,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-output
-          path: .e2e/downloads
+          path: |
+            .e2e/downloads
+            .e2e/popup-failure.png
+            .e2e-cache/dohra-home/companion.log
           retention-days: 7
