@@ -1,9 +1,10 @@
 # Architecture
 
-Dohra is a Manifest V3 extension for Chromium browsers. It has no server and no build
-outside the extension itself. This document explains how a recording moves through
-it, how it is stored, and why each choice was made, so a reader with no prior context
-can change it safely.
+Dohra is a Manifest V3 extension for Chromium browsers, plus an optional local
+companion program (Go, in `companion/`) that transcribes with whisper.cpp. There is no
+server. This document explains how a recording and its transcript move through the
+system, how they are stored, and why each choice was made, so a reader with no prior
+context can change it safely.
 
 ## The pieces
 
@@ -18,6 +19,13 @@ can change it safely.
                                └─ blob URLs ─▶ background ─▶ chrome.downloads ─▶ Downloads/Dohra/
 
  library page ── reads OPFS directly; uses the storage worker to finalize and update
+
+ transcription (optional):
+ offscreen ──16 kHz PCM per stream──▶ background ══native messaging══▶ dohra-companion ──▶ whisper-cli
+                                         ▲   │                              (Go)        chunk by chunk
+                                         │   └─ transcript.json ─▶ OPFS + Downloads/Dohra/
+                                         └──────── lines / progress / done ──────┘
+ session page ── player + transcript from OPFS; reloads as the background saves
 ```
 
 | Directory | Role |
@@ -26,11 +34,14 @@ can change it safely.
 | `src/offscreen/` | The recorder. Captures the tab (and mic), mixes audio, plays the tab back to the speakers, runs `MediaRecorder`, and streams chunks to the storage worker. |
 | `src/worker/` | Storage worker. The only code that writes recording files. |
 | `src/popup/` | Toolbar popup: options, start/pause/stop, live timer. Holds no state of its own. |
-| `src/library/` | Lists, plays, exports and deletes sessions, and recovers interrupted ones. |
+| `src/library/` | Lists, opens, exports and deletes sessions, shows transcript state, and recovers interrupted recordings. |
+| `src/session/` | One recording: player and transcript, seek-on-click, follow, search, script toggle, `.txt` download, and transcribing a recording after the fact. |
+| `src/companion-page/` | Setup instructions for the companion, with a live readiness check. |
 | `src/permissions/` | One-time microphone grant (see "Microphone" below). |
-| `src/lib/` | Shared code: settings, the session format, messages, storage helpers, and the WebM patcher. |
-| `scripts/` | Build (esbuild), packaging, icon rendering, and the end-to-end test. |
-| `test/` | Unit tests for the pure logic: the WebM patch and session naming. |
+| `src/lib/` | Shared code: settings, the session format, messages, storage helpers, the WebM patcher, the transcript format, and Devanagari-to-Roman transliteration. |
+| `companion/` | The transcription companion: native messaging host, chunking, the Whisper queue, crash-safe session store, and the installer. See "Transcription" below. |
+| `scripts/` | Build (esbuild), packaging, icon rendering, the GStreamer playback check, and the end-to-end test. |
+| `test/` | Unit tests for the extension's pure logic. The companion's tests live beside its code (`go test ./...`). |
 
 All contexts talk through `chrome.runtime.sendMessage`. That broadcasts to every
 extension page, so each message carries a `target` (`"background"` or `"offscreen"`)
@@ -154,6 +165,137 @@ audio and video are still saved.
 The background also clears stale "active" state on startup if no offscreen document
 exists. `chrome.storage.session` is wiped when the browser restarts anyway.
 
+## Transcription
+
+### Why a companion program
+
+Whisper needs real CPU and a ~0.5 GB model. Running it inside the browser (WebAssembly)
+would be several times slower than native whisper.cpp, would compete with the class in
+the same process, and would make the model a per-profile download. A native program
+gets the full CPU at a controllable priority. Chrome's **native messaging** connects
+it to the extension without opening a port: the browser starts the program, talks to
+it over stdin/stdout, and only the extension ID named in its host manifest may do so.
+
+That last point is why the manifest carries a `key`: it fixes the extension ID
+(`dkihabdjpgkkichdojcgbplmjkcboipg`) on every machine, where an unpacked extension's ID
+would otherwise depend on its folder's path.
+
+### Measurements that shaped it
+
+On the target laptop (Ryzen 5 7430U, 6 cores / 12 threads, no GPU), using 5 minutes of
+a real meeting:
+
+| Model | 3 threads | 6 threads | RAM |
+|---|---|---|---|
+| small (q5_1) | 3.2× real time | 4.9× | 0.6 GB |
+| medium (q5_0) | 1.03× | 1.6× | 1.2 GB |
+
+- **Medium was chosen** because small got technical terms and names visibly wrong
+  ("set two and three, info" for "SEV 2 and 3, infra"). Greedy decoding instead of beam
+  search bought 15% speed and brought the same errors back, so beam search stays.
+- **Chunks are about 2 minutes.** Whisper encodes 30-second windows and re-encodes from
+  the last complete line at the end of every run, so each run pays about one extra
+  window. Measured: a 28-second chunk ran at 0.7× real time, 2 minutes at 1.0×.
+- **Language is detected once.** `-l auto` costs an extra encoder pass per run. The
+  first chunk with speech detects it, and the rest of the session uses that language.
+  The popup's language hint skips detection entirely.
+- **Model load is 0.3 s**, so starting `whisper-cli` per chunk is cheaper than keeping a
+  server process alive.
+
+### The pipeline
+
+1. **Tap** ([src/offscreen/tap.ts](src/offscreen/tap.ts)). When the companion has
+   accepted the session, the recorder opens a second, 16 kHz `AudioContext`. One
+   AudioWorklet per source turns the tab ("them") and the microphone ("me") into
+   1-second blocks of 16-bit PCM. Keeping them separate is what labels lines "Me" or
+   "Them" without guessing. Blocks are dropped while paused, keeping the transcript's
+   clock aligned with the recording, which also excludes pauses. On stop the worklets
+   flush their partial block before the background hears "finalizing", so no audio is
+   lost.
+2. **Relay** ([src/background/transcriber.ts](src/background/transcriber.ts)). The
+   service worker holds one native port for all sessions and forwards blocks as base64.
+   An open native port keeps the service worker alive, which matters after class while
+   the companion catches up. The port is closed 10 s after the last session finishes.
+3. **Chunk and queue** ([companion/internal/engine](companion/internal/engine)). The
+   companion appends each block to `<id>/them.pcm` or `me.pcm` (fsynced), and cuts the
+   stream into ~2-minute chunks at the quietest half second in the last 30 seconds, so
+   words are not split. One worker runs the queue in order: 3 threads while any session
+   is still recording, then 6 so the queue catches up. Whisper runs at low priority
+   (`nice 10`, or below-normal on Windows) so the class and the recorder always win.
+   Chunks that are silent (below about -50 dBFS, like an unused microphone) are skipped
+   without running Whisper, and Silero VAD inside Whisper skips silence within chunks.
+   Both stop Whisper inventing text such as "Thank you." over silence.
+4. **Save.** For each finished chunk the companion sends `lines` and `progress`. The
+   background (debounced) fetches the whole transcript in pages — Chrome limits
+   host-to-extension messages to 1 MiB — and rewrites `transcript.json` in the session
+   folder. Pages reload when `chrome.storage.session.transcripts` changes. On `done`, the
+   final file is written and copied to `Downloads/Dohra/<id>/transcript.json`.
+
+**Transcribing a recording afterwards** reuses the same path with one stream, "mixed".
+The session page decodes `recording.webm` to 16 kHz mono with `OfflineAudioContext` and
+sends it in 10-second blocks. Simple, but it holds the decoded audio in memory: about
+120 MB per hour, plus the file itself.
+
+### Protocol
+
+Requests carry an `id` and get exactly one `{"type":"reply","id",…}`. `audio` is
+fire-and-forget; an error with it comes back as an `error` event.
+
+| Request | Effect |
+|---|---|
+| `hello` | Version, readiness, and any problems ("model not downloaded") |
+| `start {sessionId, language}` | Begin a session, or rejoin one still receiving. Starting a finished one replaces its transcript. |
+| `audio {sessionId, stream, pcm}` | Append base64 16 kHz int16 samples to a stream |
+| `stop {sessionId}` | No more audio; queue the remainder |
+| `status` | Every unfinished session's progress |
+| `transcript {sessionId, from}` | Up to 500 committed lines from index `from` |
+
+Events: `progress {receivedMs, doneMs, queued}`, `lines`, and
+`done {state: complete|failed, error}`.
+
+### Surviving crashes and closed browsers
+
+The companion is killed whenever Chrome disconnects, including when the browser
+closes mid-catch-up. Its session store
+([companion/internal/store](companion/internal/store)) is built for that:
+
+- Each stream tracks `received`, `chunked` and `done`, in samples, in `meta.json`
+  (replaced atomically).
+- Lines are appended to `lines.jsonl` with their chunk and a run ID *before* `done`
+  advances. Reading ignores lines from chunks not yet done, and keeps only the latest
+  run of a chunk that was interrupted after writing.
+- On start, `Resume()` re-queues everything between `done` and `received`.
+- Once a session is complete, its PCM is deleted; the recording itself is the copy that
+  matters.
+
+On the extension side, the background scans for `transcript.json` files still marked
+`live` or `transcribing` whenever it starts. If the companion still has the session
+queued, its events finish the job. If it finished while the browser was closed, the
+result is fetched and saved.
+
+A Whisper failure fails that session, not the companion. Its error is shown on the
+session page, which offers **Try again**.
+
+### Installer
+
+`dohra-companion install` copies itself into the data directory
+(`~/.local/share/dohra`, `~/Library/Application Support/Dohra`, or
+`%LOCALAPPDATA%\Dohra`; `DOHRA_HOME` overrides). It then downloads:
+
+- a pinned whisper.cpp build (`b5454`);
+- the chosen model and the Silero VAD model.
+
+Each download is checked against a SHA-256 in
+[companion/internal/config](companion/internal/config). Archive entries that would
+escape the target directory are rejected. Finally it writes the native messaging host
+manifest:
+
+- **Linux and macOS:** into each installed browser's `NativeMessagingHosts` directory.
+- **Windows:** into the data directory, with registry keys pointing to it.
+
+Re-running `install` is cheap: anything already present and verified is kept. macOS has
+no prebuilt whisper.cpp command-line binary, so there it comes from Homebrew.
+
 ## Browser constraints this design works around
 
 | Constraint | Consequence |
@@ -165,6 +307,9 @@ exists. `chrome.storage.session` is wiped when the browser restarts anyway.
 | Without `activeTab`, `tabs.get()` hides the tab's URL | `activeTab` is requested. It grants access only to the tab the user invoked Dohra on. |
 | Tab capture mutes the tab | Captured audio is played back through an `AudioContext`. |
 | `AUDIO_PLAYBACK` offscreen documents close after 30 s of silence | That reason is deliberately not used; a quiet class must not end the recording. |
+| Offscreen documents cannot use `connectNative` | The recorder sends PCM to the background, which owns the native port. |
+| A service worker cannot create blob URLs | `transcript.json` is exported to Downloads as a `data:` URL. |
+| Unpacked extension IDs depend on the folder path | The manifest pins a `key`, so the ID the companion trusts is the same everywhere. |
 
 ## Settings
 
@@ -176,6 +321,8 @@ Stored in `chrome.storage.local`:
 | Quality | 480p, 720p (default) or 1080p |
 | Microphone | on or off |
 | Auto-export | on or off |
+| Transcribe | on (default) or off; needs the companion |
+| Language | `auto` (default), `hi` or `en`, passed to Whisper |
 
 Video is VP8 and audio is Opus at 96 kbps. VP8 is chosen over VP9 because VP9 encoding
 is much heavier on the CPU, which matters on an ordinary laptop that is also running
@@ -187,13 +334,29 @@ static slides, where sharp text matters more than smooth motion.
 - **Unit tests** (`npm test`) cover the WebM repair against synthetic EBML: the
   MediaRecorder layout, a known Segment size, an existing Duration, a size field that
   has to widen, Chrome's AlphaMode, a cut-off Tracks element, and malformed input.
-  They also cover session naming and formatting.
+  They also cover session naming and formatting, transliteration, finding the playing
+  line, and PCM encoding.
+- **Companion tests** (`cd companion && go test -race ./...`) cover:
+  - the protocol framing and request handling;
+  - quiet-point chunking;
+  - the engine with a fake Whisper: chunk offsets, language lock, live and idle
+    threads, silent streams, failure, resume after a crash, and replacing a finished
+    transcript;
+  - the store's crash rules: uncommitted and duplicated runs, and a torn last line;
+  - the installer's checksum, archive-escape and host-manifest handling.
 - **End-to-end** (`npm run e2e`, [scripts/e2e.mjs](scripts/e2e.mjs)) loads the built
-  extension into real Chromium and drives it through the popup against a test page
-  with moving video and a steady tone. It covers three scenarios:
+  extension into real Chromium and drives it through the popup. It covers six scenarios:
   - a paused video recording with the microphone;
   - an audio-only recording ended by closing the tab;
-  - a browser killed with `SIGKILL` mid-recording and then recovered.
+  - a browser killed with `SIGKILL` mid-recording and then recovered;
+  - the library listing them;
+  - live transcription of a page playing speech (whisper.cpp's public-domain JFK
+    sample) through the real companion with the small model. The transcript must
+    contain the spoken words, and the session page must show every line, seek on
+    click, and filter on search;
+  - transcribing a finished recording from its session page.
+
+  The first three use a test page with moving video and a steady tone.
 
   Each recording is checked for duration, seeking, audible audio, video size, raw-file
   cleanup, and the SHA-256 of the Downloads copy. The Downloads copy is also played
@@ -201,16 +364,29 @@ static slides, where sharp text matters more than smooth motion.
   plays is not necessarily one a desktop player accepts. That is how the AlphaMode
   problem slipped through the first version.
 
-  Two quirks of the test setup:
+  Quirks of the test setup:
   - Headless Chromium captures tab audio as silence, so the test runs headful under
     `xvfb-run`.
   - `--use-fake-ui-for-media-stream` breaks tab capture, so the microphone is granted
     through the permissions API instead.
+  - A headful popup closes the moment it loses focus. The test therefore writes
+    settings straight to storage and uses the popup only for the one click tab capture
+    requires, with retries. It also turns off Chrome's download bubble. Rarely, the
+    popup still fails to open; the test then saves a screenshot of the whole display to
+    `.e2e/popup-failure.png`.
+  - The companion is installed into `.e2e-cache/` with `--no-register` and registered
+    only with the test profile, so a run never touches the real browser setup.
 
   CI runs both on every push.
 
-Not covered automatically: hearing tab audio through the speakers while recording,
-hour-long recordings, and laptop sleep during a recording. These need a manual check.
+Not covered automatically:
+- hearing tab audio through the speakers while recording;
+- hour-long recordings, and laptop sleep during a recording;
+- transcript quality on Hindi and Hinglish (no suitable public sample yet);
+- the Windows and macOS companion builds, which are compiled and vetted in CI but not
+  run.
+
+These need a manual check.
 
 ## Known limits
 
@@ -218,4 +394,9 @@ hour-long recordings, and laptop sleep during a recording. These need a manual c
 - Duration is measured with `performance.now()`. If the laptop sleeps mid-recording,
   the stored Duration may not match the media exactly. The file still plays.
 - Without headphones, the microphone also records the class from the speakers. Echo
-  cancellation reduces this but does not remove it.
+  cancellation reduces this but does not remove it. The transcript then repeats
+  "Them" lines as "Me".
+- Language detection runs once per session, on the first speech. A class that starts
+  in English and continues in Hindi is transcribed as English (Whisper then translates
+  rather than transcribes). Set the language in the popup for such classes.
+- Transcribing an existing recording decodes all of its audio in memory at once.

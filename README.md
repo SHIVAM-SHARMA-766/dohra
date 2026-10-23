@@ -17,12 +17,13 @@ revise from afterwards.
 
 ## Status
 
-**Stage 1 — recording — is done.** Later stages build on the same session format:
+**Stages 1 and 2 — recording and transcripts — are done.** Later stages build on the
+same session format:
 
 | Stage | What | Status |
 |---|---|---|
 | 1 | Record a tab's audio and video locally, browse and play recordings | Done |
-| 2 | Transcript after the class (Hindi, English, Hinglish) with "me / them" labels | Planned |
+| 2 | Transcript made on this computer while the class runs (Hindi, English, Hinglish), "me / them" labels, Devanagari and Roman views | Done |
 | 3 | Plain-English meaning of each line, unfinished sentences completed, summary | Planned |
 | 4 | Live transcript in a side panel, with a hotkey to hide it while screen sharing | Planned |
 | 5 | Desktop apps (e.g. the Zoom app) as well as browser tabs | Planned |
@@ -44,12 +45,46 @@ To update, unzip the new release over the same folder and press the reload icon 
 Dohra's card in `chrome://extensions`. Recordings are kept across updates. They are
 lost if the extension is *removed*, unless they were copied to Downloads (see below).
 
-**From source** (needs Node.js 20.19 or later):
+**From source** (needs Node.js 20.19 or later, and Go 1.26 for the companion):
 
 ```sh
 gh repo clone SHIVAM-SHARMA-766/dohra && cd dohra
 npm ci && npm run build      # then load the dist/ folder as above
+cd companion && go build -o dohra-companion . && ./dohra-companion install
 ```
+
+### The transcription companion (optional)
+
+Transcripts are made by `dohra-companion`, a small program that runs
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp) on this computer. The browser
+starts it when needed; nothing is uploaded. Without it, Dohra still records — there is
+just no transcript.
+
+Download the binary for your platform from [Releases](../../releases) and run
+`install`. It downloads whisper.cpp and the speech model (about 550 MB), checks every
+file against a pinned SHA-256, and registers itself with Chrome, Chromium, Brave and
+Edge:
+
+```sh
+# Linux (x86-64); on macOS run `brew install whisper-cpp` first and pick the darwin build
+gh release download --repo SHIVAM-SHARMA-766/dohra --pattern dohra-companion-linux-amd64 --output dohra-companion
+chmod +x dohra-companion && ./dohra-companion install
+
+# Windows (PowerShell)
+gh release download --repo SHIVAM-SHARMA-766/dohra --pattern dohra-companion-windows-amd64.exe --output dohra-companion.exe
+.\dohra-companion.exe install
+```
+
+Then reload Dohra in `chrome://extensions`. The extension's **Companion setup** page
+(linked from the popup) shows the same commands and whether it is ready.
+`dohra-companion status` shows what is installed; `uninstall --purge` removes it all.
+
+The default **medium** model is the accurate one. On a 6-core laptop CPU it runs at
+about real time while the class is on, at low priority so the class never stutters,
+and catches up once it ends. From the benchmark, a one-hour class should be fully
+transcribed roughly 10–15 minutes after it finishes; this has not yet been measured on
+a full class. `install --model small` is about four times faster but makes clearly more
+mistakes, especially with names, technical terms and Hindi.
 
 ## Use
 
@@ -68,9 +103,28 @@ time, the popup links to a page where the browser asks for microphone access. Us
 headphones if you can; otherwise the microphone also picks up the class from your
 speakers.
 
+**Transcripts.** With **Transcribe** ticked (the default) and the companion installed,
+the transcript is made while you record. Set **Spoken language** to *Hindi / Hinglish*
+for classes in Hindi; *Detect automatically* decides from the first speech it hears and
+sticks with that. The popup shows how far the transcript has got.
+
+Open a recording from the library to see it with its transcript:
+
+- Click any line to jump the recording to that moment; the line being played is
+  highlighted and kept in view (untick **Follow** to scroll freely).
+- **Search** finds a word in either script — `padhenge` finds `पढ़ेंगे`.
+- Switch Hindi between **देवनागरी** and **Roman**. The Roman view is a mechanical
+  transliteration ("aaj ham padhenge"), readable and searchable but not polished
+  Hinglish; that comes in stage 3.
+- Lines are marked **Me** (your microphone) or **Them** (the tab).
+- **Download transcript (.txt)** saves it as plain text with timestamps.
+
+A recording made without the companion, or before it was installed, can be transcribed
+afterwards from its page with **Transcribe this recording**.
+
 ### Where recordings go
 
-- **The library.** Click **Library** in the popup to list, search, play, save, or
+- **The library.** Click **Library** in the popup to list, search, open, save, or
   delete recordings. They are stored inside the browser profile.
 - **Downloads/Dohra/.** Each finished recording is also copied to your Downloads folder,
   one folder per session:
@@ -79,6 +133,7 @@ speakers.
   Downloads/Dohra/2026-10-06_190000_dsa-class/
     recording.webm   the recording (WebM; plays in any browser, VLC, mpv)
     session.json     title, source page, start/end time, duration, SHA-256 of the file
+    transcript.json  timestamped lines with speaker, once transcribed
   ```
 
   This copy survives removing the extension or the browser. You can turn it off in the
@@ -97,6 +152,12 @@ interrupted recording automatically and keeps everything up to the last few seco
   is being shared" indicator, and Dohra cannot hide it.
 - **Check your course's terms.** Some course platforms forbid recording in their terms
   of use, so check before relying on Dohra for one.
+- **Transcripts are only as good as the model.** Expect misheard names and terms,
+  especially with the small model and in Hindi. The recording is always there to check
+  against: click the line.
+- **Upgrading from 0.1.** Version 0.2 fixes the extension's ID so the companion can
+  trust it. The browser therefore treats 0.2 as a new extension, and the library starts
+  empty; recordings made with 0.1 remain in `Downloads/Dohra/`.
 
 ## Develop
 
@@ -104,8 +165,10 @@ interrupted recording automatically and keeps everything up to the last few seco
 npm run watch       # rebuild dist/ on change; reload the extension to pick it up
 npm run typecheck
 npm test            # unit tests (vitest)
-npm run e2e         # end-to-end test in real Chromium; Linux, needs xvfb-run
+npm run e2e         # end-to-end test in real Chromium; Linux, needs xvfb-run and Go
 npm run package     # release/dohra-<version>.zip
+
+cd companion && go test ./...   # the companion
 ```
 
 How the pieces fit together is in [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -113,7 +176,8 @@ How the pieces fit together is in [ARCHITECTURE.md](ARCHITECTURE.md).
 **Releasing:** bump `version` in `package.json`, commit, then push a matching tag:
 
 ```sh
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
-The release workflow builds the zip and attaches it to a GitHub release.
+The release workflow builds the extension zip and the companion for Linux, Windows and
+macOS, and attaches them to a GitHub release with their checksums.
