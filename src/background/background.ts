@@ -17,6 +17,7 @@ import {
 } from "../lib/messages";
 import { sessionId, type SessionMeta } from "../lib/session";
 import { loadSettings } from "../lib/settings";
+import * as transcriber from "./transcriber";
 
 const OFFSCREEN_URL = "offscreen.html";
 
@@ -108,6 +109,16 @@ async function start(tabId: number, title: string): Promise<void> {
     progress: { durationMs: 0, bytes: 0, paused: false, at: Date.now() },
   });
 
+  // Transcription is best effort: without the companion, the recording still happens.
+  let transcribe = false;
+  if (settings.transcribe) {
+    try {
+      transcribe = await transcriber.startSession(id, true);
+    } catch (e) {
+      await transcriber.failSession(id, errorMessage(e));
+    }
+  }
+
   try {
     await ensureOffscreen();
     await toOffscreen({
@@ -122,10 +133,12 @@ async function start(tabId: number, title: string): Promise<void> {
         quality: settings.quality,
         mic: settings.mic,
         recorder: `dohra-extension/${chrome.runtime.getManifest().version}`,
+        transcribe,
       },
     });
     await patchActive({ status: "recording" });
   } catch (e) {
+    if (transcribe) await transcriber.stopSession(id).catch(() => {});
     await setActive(null);
     await closeOffscreen();
     throw e;
@@ -149,7 +162,7 @@ async function pauseOrResume(type: "pause" | "resume"): Promise<void> {
   await toOffscreen({ target: "offscreen", type });
 }
 
-async function handleRequest(msg: BackgroundRequest): Promise<void> {
+async function handleRequest(msg: BackgroundRequest): Promise<unknown> {
   switch (msg.type) {
     case "start":
       return start(msg.tabId, msg.title);
@@ -158,6 +171,18 @@ async function handleRequest(msg: BackgroundRequest): Promise<void> {
     case "pause":
     case "resume":
       return pauseOrResume(msg.type);
+    case "companion-status":
+      return transcriber.checkCompanion();
+    case "transcribe-start":
+      if (!(await transcriber.startSession(msg.sessionId, false))) {
+        const info = await transcriber.checkCompanion();
+        throw new Error(info.problems.join(" ") || "the companion is not ready");
+      }
+      return;
+    case "transcribe-audio":
+      return transcriber.sendAudio(msg.sessionId, "mixed", msg.pcm);
+    case "transcribe-stop":
+      return transcriber.stopSession(msg.sessionId);
   }
 }
 
@@ -210,14 +235,24 @@ async function finished(meta: SessionMeta, files: ExportFile[]): Promise<void> {
 }
 
 async function handleRecorderEvent(event: RecorderEvent): Promise<void> {
+  const active = await getActive();
   switch (event.type) {
     case "recorder-progress":
       return patchActive({ progress: event.progress, status: event.progress.paused ? "paused" : "recording" });
+    case "recorder-audio":
+      if (active) transcriber.sendAudio(active.sessionId, event.stream, event.pcm);
+      return;
+    case "recorder-tap-failed":
+      if (active) await transcriber.failSession(active.sessionId, `could not capture audio for the transcript: ${event.error}`);
+      return;
     case "recorder-finalizing":
+      // Every audio block was sent before this message, so the companion has it all.
+      if (active) await transcriber.stopSession(active.sessionId).catch(() => {});
       return patchActive({ status: "finalizing" });
     case "recorder-finished":
       return finished(event.meta, event.files);
     case "recorder-failed":
+      if (active) await transcriber.stopSession(active.sessionId).catch(() => {});
       await setLastError(`Recording failed: ${event.error}`);
       await closeOffscreen();
       return setActive(null);
@@ -232,7 +267,7 @@ chrome.runtime.onMessage.addListener((msg: BackgroundRequest | RecorderEvent, _s
     ? handleRecorderEvent(msg as RecorderEvent)
     : handleRequest(msg as BackgroundRequest);
   work.then(
-    () => sendResponse({ ok: true }),
+    (data) => sendResponse({ ok: true, data }),
     async (e) => {
       const error = errorMessage(e);
       await setLastError(error);
@@ -259,4 +294,5 @@ void (async () => {
   const active = await getActive();
   if (active && !(await hasOffscreen())) await setActive(null);
   else await updateBadge(active);
+  await transcriber.resumeUnfinished().catch(() => {});
 })();

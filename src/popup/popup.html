@@ -50,6 +50,20 @@
         <span>Also save a copy to Downloads/Dohra</span>
       </label>
 
+      <label class="check">
+        <input id="transcribe" type="checkbox" />
+        <span>Transcribe</span>
+      </label>
+      <label class="field indent" id="language-field">
+        <span>Spoken language</span>
+        <select id="language">
+          <option value="auto">Detect automatically</option>
+          <option value="hi">Hindi / Hinglish</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <p id="companion" class="hint indent"></p>
+
       <p id="estimate" class="hint"></p>
       <button id="start" class="primary">Start recording</button>
       <p class="hint shortcut">Shortcut: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> starts or stops</p>
@@ -60,6 +74,7 @@
       <p id="rec-status" class="rec-status"></p>
       <p id="timer" class="timer">00:00</p>
       <p id="size" class="hint"></p>
+      <p id="transcript-status" class="hint center"></p>
       <div class="row">
         <button id="pause">Pause</button>
         <button id="stop" class="danger">Stop</button>

@@ -3,7 +3,8 @@
 //
 // Captures the tab (and optionally the microphone), plays the tab's audio back out —
 // tab capture mutes the tab otherwise — and streams the recording to the storage
-// worker in chunks.
+// worker in chunks. When transcribing, it also taps both sources as 16 kHz PCM and
+// passes it to the background for the companion.
 
 import {
   errorMessage,
@@ -17,6 +18,8 @@ import {
 import { EXPORT_DIR, FILES, SCHEMA_VERSION, type EndReason, type SessionMeta } from "../lib/session";
 import { AUDIO_BITS_PER_SECOND, QUALITY, TIMESLICE_MS } from "../lib/settings";
 import { recordingFile, StorageWorker } from "../lib/storage";
+import { pcmToBase64 } from "../lib/transcript";
+import { Tap } from "./tap";
 
 interface Recording {
   options: StartOptions;
@@ -32,6 +35,9 @@ interface Recording {
   runStartedAt: number | null;
   stopping: boolean;
   writeError: string | null;
+  tap: Tap | null;
+  /** Tapped audio is dropped while paused, keeping it aligned with the recording. */
+  tapPaused: boolean;
 }
 
 let current: Recording | null = null;
@@ -142,6 +148,8 @@ async function start(streamId: string, options: StartOptions): Promise<void> {
     const storage = new StorageWorker();
     await storage.call({ op: "open", meta });
 
+    const micStream = options.mic ? streams[1] : undefined;
+
     const r: Recording = {
       options,
       recorder,
@@ -154,8 +162,21 @@ async function start(streamId: string, options: StartOptions): Promise<void> {
       runStartedAt: null,
       stopping: false,
       writeError: null,
+      tap: null,
+      tapPaused: false,
     };
     current = r;
+
+    if (options.transcribe) {
+      // A failure here costs the transcript, never the recording.
+      try {
+        r.tap = await Tap.create({ them: tab, ...(micStream ? { me: micStream } : {}) }, (stream, pcm) => {
+          if (!r.tapPaused) send({ target: "background", type: "recorder-audio", stream, pcm: pcmToBase64(pcm) });
+        });
+      } catch (e) {
+        send({ target: "background", type: "recorder-tap-failed", error: errorMessage(e) });
+      }
+    }
 
     recorder.ondataavailable = (event) => {
       if (event.data.size === 0) return;
@@ -198,6 +219,7 @@ function pause(): void {
   r.recorder.pause();
   r.accumulatedMs = elapsed(r);
   r.runStartedAt = null;
+  r.tapPaused = true;
   send({ target: "background", type: "recorder-progress", progress: progress(r) });
 }
 
@@ -206,6 +228,7 @@ function resume(): void {
   if (!r || r.stopping || r.runStartedAt !== null) return;
   r.recorder.resume();
   r.runStartedAt = performance.now();
+  r.tapPaused = false;
   send({ target: "background", type: "recorder-progress", progress: progress(r) });
 }
 
@@ -225,6 +248,12 @@ async function stop(reason: EndReason, error: string | null = null): Promise<voi
       });
     }
     await r.writes;
+    if (r.tap) {
+      // Send the last partial second before the background is told we stopped;
+      // messages from here arrive in order.
+      await r.tap.flush().catch(() => {});
+      await r.tap.close().catch(() => {});
+    }
     for (const s of r.streams) s.getTracks().forEach((t) => t.stop());
     await r.audio.close();
 

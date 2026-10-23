@@ -79,6 +79,16 @@ export async function listSessions(): Promise<SessionMeta[]> {
   return sessions.sort((a, b) => b.id.localeCompare(a.id));
 }
 
+export async function getSession(id: string): Promise<SessionMeta | null> {
+  try {
+    const dir = await (await sessionsDir()).getDirectoryHandle(id);
+    const file = await (await dir.getFileHandle(FILES.meta)).getFile();
+    return JSON.parse(await file.text()) as SessionMeta;
+  } catch {
+    return null;
+  }
+}
+
 export async function recordingFile(id: string): Promise<File> {
   const dir = await (await sessionsDir()).getDirectoryHandle(id);
   return (await dir.getFileHandle(FILES.recording)).getFile();

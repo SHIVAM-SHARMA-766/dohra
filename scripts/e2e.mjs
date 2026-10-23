@@ -7,6 +7,10 @@
 //   1. video + mic, with a pause in the middle, stopped from the popup
 //   2. audio only, stopped by closing the recorded tab
 //   3. browser killed mid-recording, then recovered by the library on next launch
+//   4. the library lists them
+//   5. live transcription of a speech page through the companion, then the session
+//      page: every line shown, clicking a line seeks, search filters
+//   6. transcribing a finished recording from its session page
 //
 // Each recording is checked for: completed state, a duration that matches the time
 // actually recorded (pauses excluded), working seek, audible audio, the expected video
@@ -16,7 +20,9 @@
 //
 // Environment: CHROME=/path/to/chromium (default /usr/bin/chromium). The GStreamer
 // check is skipped when its Python bindings are missing, unless REQUIRE_GSTREAMER=1
-// (set on CI).
+// (set on CI). Scenarios 5-6 build the companion with Go and install it with the
+// small model into .e2e-cache/ (about 200 MB, downloaded once); E2E_TRANSCRIBE=0
+// skips them. The companion is registered only with the test profile.
 //
 // Two browser constraints shape this script:
 // - Headless Chromium has no audio pipeline, so captured tab audio is pure silence.
@@ -38,6 +44,17 @@ const work = join(root, ".e2e");
 const profile = join(work, "profile");
 const downloads = join(work, "downloads");
 const CHROME = process.env.CHROME ?? "/usr/bin/chromium";
+const TRANSCRIBE = process.env.E2E_TRANSCRIBE !== "0";
+const cache = join(root, ".e2e-cache");
+const dohraHome = join(cache, "dohra-home");
+const companionBin = join(work, "dohra-companion");
+// Public-domain speech sample from the whisper.cpp repository: "...ask not what your
+// country can do for you, ask what you can do for your country."
+const JFK = {
+  url: "https://raw.githubusercontent.com/ggml-org/whisper.cpp/b5454/samples/jfk.wav",
+  sha256: "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e",
+  path: join(cache, "jfk.wav"),
+};
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
@@ -71,12 +88,53 @@ const TEST_PAGE = `<!doctype html><title>Test class</title>
   osc.start();
 </script>`;
 
+const SPEECH_PAGE = `<!doctype html><title>Speech class</title>
+<body style="margin:0;background:#123;color:#fff;font:32px sans-serif">
+<p>Speech</p><audio src="/jfk.wav" autoplay loop></audio>`;
+
 function serve() {
-  const server = http.createServer((_req, res) => {
+  const server = http.createServer(async (req, res) => {
+    if (req.url === "/jfk.wav") {
+      res.writeHead(200, { "content-type": "audio/wav" });
+      res.end(await readFile(JFK.path));
+      return;
+    }
     res.writeHead(200, { "content-type": "text/html" });
-    res.end(TEST_PAGE);
+    res.end(req.url === "/speech" ? SPEECH_PAGE : TEST_PAGE);
   });
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
+
+// ---- companion ----------------------------------------------------------------------
+
+function run(cmd, args, options = {}) {
+  const r = spawnSync(cmd, args, { encoding: "utf8", ...options });
+  if (r.status !== 0) {
+    throw new Error(`${cmd} ${args.join(" ")} failed:\n${r.stdout ?? ""}${r.stderr ?? String(r.error ?? "")}`);
+  }
+  return r.stdout;
+}
+
+async function fetchVerified({ url, sha256, path }) {
+  try {
+    if (createHash("sha256").update(await readFile(path)).digest("hex") === sha256) return;
+  } catch {}
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url}: ${res.status}`);
+  const data = Buffer.from(await res.arrayBuffer());
+  const got = createHash("sha256").update(data).digest("hex");
+  if (got !== sha256) throw new Error(`${url}: sha256 ${got}, want ${sha256}`);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, data);
+}
+
+/** Builds the companion, installs it with the small model, and registers it with the test profile only. */
+async function setupCompanion() {
+  run("go", ["build", "-o", companionBin, "."], { cwd: join(root, "companion") });
+  const env = { ...process.env, DOHRA_HOME: dohraHome };
+  run(companionBin, ["install", "--model", "small", "--no-register"], { env });
+  run(companionBin, ["register", "--browser-dir", profile], { env });
+  await fetchVerified(JFK);
 }
 
 // ---- browser ------------------------------------------------------------------------
@@ -84,16 +142,21 @@ function serve() {
 async function launch() {
   const browser = await puppeteer.launch({
     executablePath: CHROME,
+    protocolTimeout: 30_000, // fail fast instead of hanging on a popup that closed
     headless: false,
     pipe: true,
     enableExtensions: true,
     userDataDir: profile,
+    env: { ...process.env, DOHRA_HOME: dohraHome }, // inherited by the companion
     defaultViewport: { width: 1280, height: 720 },
     args: [
       "--autoplay-policy=no-user-gesture-required",
       // A fake microphone. Not --use-fake-ui-for-media-stream: it breaks tab capture
       // ("Requested device not found"); the mic grant goes through the permissions API.
       "--use-fake-device-for-media-stream",
+      // Chrome's download bubble pops open after each download and takes focus,
+      // which closes the extension popup the next scenario is trying to open.
+      "--disable-features=DownloadBubble,DownloadBubbleV2",
       // GitHub's Ubuntu runners block the user namespaces Chromium's sandbox needs.
       ...(process.env.CI ? ["--no-sandbox"] : []),
     ],
@@ -124,7 +187,12 @@ async function openPopup(browser, page, ext) {
       await sleep(500);
     }
   }
-  throw new Error(`popup did not open: ${lastError?.message}`);
+  // Browser UI (bubbles, prompts) is invisible to page screenshots; grab the whole display.
+  spawnSync("import", ["-window", "root", join(work, "popup-failure.png")]);
+  const cdp = await browser.target().createCDPSession();
+  const { targetInfos } = await cdp.send("Target.getTargets");
+  const targets = targetInfos.map((t) => `${t.type} ${t.url} "${t.title}" attached=${t.attached}`);
+  throw new Error(`popup did not open: ${lastError?.message}\n  targets: ${targets.join("\n           ")}`);
 }
 
 async function grantMic(browser, ext) {
@@ -142,16 +210,36 @@ async function grantMic(browser, ext) {
  * focus, so it cannot be relied on to stay open. The page sends the same messages the
  * popup's buttons do.
  */
-async function startRecording(browser, page, ext, control, { title, mode, mic }) {
-  const popup = await openPopup(browser, page, ext);
-  await popup.$eval("#title", (el, v) => (el.value = v), title);
-  await popup.click(`input[name="mode"][value="${mode}"]`);
-  const micOn = await popup.$eval("#mic", (el) => el.checked);
-  if (micOn !== mic) await popup.click("#mic");
-  await popup.click("#start");
-  const active = await waitForStatus(control, "recording", 15_000);
-  await popup.close().catch(() => {}); // may already have closed itself on blur
-  return active.sessionId;
+async function startRecording(browser, page, ext, control, { title, mode, mic, transcribe = false }) {
+  // Settings go straight into storage: every interaction with a headful popup is a
+  // chance for it to lose focus and close mid-call, so the popup is used only for
+  // the click that tab capture requires.
+  await control.evaluate(
+    async (patch) => {
+      const { settings } = await chrome.storage.local.get("settings");
+      await chrome.storage.local.set({ settings: { ...settings, ...patch } });
+    },
+    { mode, mic, transcribe },
+  );
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const popup = await openPopup(browser, page, ext);
+      await popup.evaluate((t) => {
+        document.getElementById("title").value = t;
+        document.getElementById("start").click();
+      }, title);
+      const active = await waitForStatus(control, "recording", 15_000);
+      await popup.close().catch(() => {}); // may already have closed itself on blur
+      return active.sessionId;
+    } catch (e) {
+      lastError = e;
+      const { active } = await state(control);
+      if (active?.status === "recording") return active.sessionId; // started; only the popup went away
+      await sleep(500);
+    }
+  }
+  throw lastError;
 }
 
 async function controlPage(browser, ext) {
@@ -268,12 +356,44 @@ function checkGstreamer(file) {
   check(run.status === 0, "plays in GStreamer (GNOME Videos)", output);
 }
 
+// ---- transcripts --------------------------------------------------------------------
+
+/** Waits for the companion to finish a session, then returns transcript.json. */
+async function waitForTranscript(control, id, timeout) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const status = await control.evaluate((id) => chrome.storage.session.get("transcripts").then((r) => r.transcripts?.[id]), id);
+    if (status?.state === "complete" || status?.state === "failed") break;
+    if (Date.now() > deadline) throw new Error(`transcript for ${id} not finished: ${JSON.stringify(status)}`);
+    await sleep(500);
+  }
+  await sleep(500); // the final save follows the status change
+  return control.evaluate(async (id) => {
+    const root = await navigator.storage.getDirectory();
+    const dir = await (await root.getDirectoryHandle("sessions")).getDirectoryHandle(id);
+    return JSON.parse(await (await (await dir.getFileHandle("transcript.json")).getFile()).text());
+  }, id);
+}
+
+function checkTranscript(t, speaker, durationMs) {
+  const text = t.lines.map((l) => l.text).join(" ");
+  check(t.state === "complete", "transcript complete", t.state + (t.error ? ` (${t.error})` : ""));
+  check(t.lines.length > 0, "transcript has lines", `${t.lines.length} lines, model ${t.model}, language ${t.language}`);
+  check(/country/i.test(text), "transcript contains the spoken words", text.slice(0, 90));
+  check(t.lines.every((l) => l.speaker === speaker), `every line attributed to "${speaker}"`);
+  check(
+    t.lines.every((l, i) => l.startMs >= 0 && l.startMs <= durationMs + 1000 && (i === 0 || l.startMs >= t.lines[i - 1].startMs)),
+    "timestamps ordered and within the recording",
+  );
+}
+
 // ---- scenarios ----------------------------------------------------------------------
 
 async function main() {
   await rm(work, { recursive: true, force: true });
   await mkdir(join(profile, "Default"), { recursive: true });
   await mkdir(downloads, { recursive: true });
+  if (TRANSCRIBE) await setupCompanion();
   await writeFile(
     join(profile, "Default", "Preferences"),
     JSON.stringify({ download: { default_directory: downloads, prompt_for_download: false } }),
@@ -337,6 +457,62 @@ async function main() {
     check(titles.length === 3, "three recordings listed", titles.join(" | "));
     const exported = await readdir(join(downloads, "Dohra"));
     check(exported.length === 2, "two copies in Downloads/Dohra", exported.join(", "));
+
+    if (TRANSCRIBE) {
+      console.log("\n5. live transcription through the companion, then the session page");
+      const control2 = await controlPage(browser, ext); // the first control page died with the old browser
+      const speech = await browser.newPage();
+      await speech.goto(url + "speech");
+      const five = await startRecording(browser, speech, ext, control2, { title: "E2E transcript", mode: "audio", mic: false, transcribe: true });
+      await sleep(25_000);
+      await command(control2, "stop");
+      await waitForStatus(control2, null);
+      const t5 = await waitForTranscript(control2, five, 240_000);
+      checkTranscript(t5, "them", 26_000);
+      await sleep(1_000);
+      try {
+        const copy = JSON.parse(await readFile(join(downloads, "Dohra", five, "transcript.json"), "utf8"));
+        check(copy.lines.length === t5.lines.length, "transcript copied to Downloads");
+      } catch (e) {
+        check(false, "transcript copied to Downloads", e.message);
+      }
+
+      const sp = await browser.newPage();
+      await sp.goto(`chrome-extension://${ext.id}/session.html?id=${five}`);
+      await sp.waitForSelector(".line");
+      const shown = await sp.$$eval(".line", (els) => els.length);
+      check(shown === t5.lines.length, "session page shows every line", `${shown} of ${t5.lines.length}`);
+      const last = t5.lines[t5.lines.length - 1];
+      await sp.$$eval(".line", (els) => els[els.length - 1].click());
+      const seeked = await sp
+        .waitForFunction((t) => Math.abs(document.getElementById("media").currentTime - t) < 1.5, { timeout: 5_000 }, last.startMs / 1000)
+        .then(() => true, () => false);
+      check(seeked, "clicking a line seeks the player to it", `${(last.startMs / 1000).toFixed(1)}s`);
+      await sp.type("#search", "country");
+      const matches = await sp.$$eval(".line", (els) => els.length);
+      const marked = await sp.$$eval(".line mark", (els) => els.length);
+      check(matches > 0 && matches <= shown && marked > 0, "search filters and highlights", `${matches} of ${shown} lines`);
+      await sp.close();
+
+      console.log("\n6. transcribing a finished recording from its session page");
+      const speech2 = await browser.newPage();
+      await speech2.goto(url + "speech");
+      const six = await startRecording(browser, speech2, ext, control2, { title: "E2E later", mode: "audio", mic: false, transcribe: false });
+      await sleep(15_000);
+      await command(control2, "stop");
+      await waitForStatus(control2, null);
+      const sp6 = await browser.newPage();
+      await sp6.goto(`chrome-extension://${ext.id}/session.html?id=${six}`);
+      const offered = await sp6.waitForSelector("#transcribe:not([hidden])", { timeout: 15_000 }).then(() => true, () => false);
+      check(offered, "session page offers to transcribe");
+      if (offered) {
+        await sp6.click("#transcribe");
+        const t6 = await waitForTranscript(control2, six, 240_000);
+        checkTranscript(t6, "mixed", 16_000);
+        const rendered = await sp6.waitForSelector(".line", { timeout: 10_000 }).then(() => true, () => false);
+        check(rendered, "session page shows the new transcript");
+      }
+    }
   } finally {
     await browser.close().catch(() => {});
     server.close();

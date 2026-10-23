@@ -7,3 +7,4 @@ release/
 # companion builds
 companion/dohra-companion
 companion/dist/
+.e2e-cache/

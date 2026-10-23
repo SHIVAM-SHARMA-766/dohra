@@ -116,3 +116,15 @@ header {
 .row button {
   flex: 1;
 }
+
+.indent {
+  margin-left: 26px;
+}
+
+.center {
+  text-align: center;
+}
+
+#companion[data-ready="true"] {
+  color: var(--ok);
+}

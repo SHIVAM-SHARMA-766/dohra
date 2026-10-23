@@ -75,7 +75,8 @@ func main() {
 func usage() {
 	fmt.Print(`dohra-companion — local transcription for Dohra
 
-  install [--model medium|small|both]   download whisper.cpp and models, register with the browser
+  install [--model medium|small|both] [--no-register]
+                                        download whisper.cpp and models, register with the browser
   status                                show what is installed and what is in progress
   bench <file.wav>                      time the configured model on a 16 kHz WAV
   uninstall [--purge]                   unregister; --purge also deletes all downloaded files
@@ -86,6 +87,7 @@ func usage() {
 func install(args []string) error {
 	fs := flag.NewFlagSet("install", flag.ExitOnError)
 	model := fs.String("model", "medium", "medium, small, or both")
+	noRegister := fs.Bool("no-register", false, "do not register with installed browsers")
 	_ = fs.Parse(args)
 	models := []string{*model}
 	if *model == "both" {
@@ -93,7 +95,7 @@ func install(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	return setup.Install(ctx, setup.Options{Models: models, Out: os.Stdout})
+	return setup.Install(ctx, setup.Options{Models: models, NoRegister: *noRegister, Out: os.Stdout})
 }
 
 func registerIn(dir string) error {

@@ -2,6 +2,8 @@
 
 export type Mode = "audio" | "video";
 export type Quality = "480p" | "720p" | "1080p";
+/** Spoken language hint for transcription. "auto" detects it from the first speech. */
+export type Language = "auto" | "hi" | "en";
 
 export interface Settings {
   mode: Mode;
@@ -9,6 +11,9 @@ export interface Settings {
   mic: boolean;
   /** Copy each finished recording to Downloads/Dohra/ automatically. */
   autoExport: boolean;
+  /** Transcribe while recording, if the companion is installed. */
+  transcribe: boolean;
+  language: Language;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -16,6 +21,8 @@ export const DEFAULT_SETTINGS: Settings = {
   quality: "720p",
   mic: false,
   autoExport: true,
+  transcribe: true,
+  language: "auto",
 };
 
 interface QualityProfile {

@@ -21,7 +21,10 @@ const entryPoints = {
   popup: "src/popup/popup.ts",
   library: "src/library/library.ts",
   permissions: "src/permissions/permissions.ts",
+  session: "src/session/session.ts",
+  companion: "src/companion-page/companion.ts",
   worker: "src/worker/storage-worker.ts",
+  "tap-worklet": "src/offscreen/tap-worklet.ts",
 };
 
 const staticFiles = [
@@ -32,6 +35,10 @@ const staticFiles = [
   "library/library.html",
   "library/library.css",
   "permissions/permissions.html",
+  "session/session.html",
+  "session/session.css",
+  "companion-page/companion.html",
+  "companion-page/companion.css",
 ];
 
 async function copyStatic() {

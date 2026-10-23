@@ -3,8 +3,17 @@
   "name": "Dohra",
   "version": "0.0.0",
   "description": "Record a class or meeting in any browser tab — audio and video, saved on this computer only.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAumel6qzucDx6NGD7ukZXaI2gANKRbP4RjEDFImCpd5A3UdRezsNiNLHoAz73o4nuEV/0l0YH4uSVTvPWEVh0clqpGxAr6w5ZIhGC38C4ynWnfp/JmoiLfFYQRfA7kmhN5D6xmFGiPmYoH5hP5qMfflzYw4Bb9CItzmW2DKUlYmkSDuDGQekyJzC8RzgP0+/66VMXhiObBcJ2NP63sGreSE1gEC+P+iZkx/jfcmj5fdLXHUekYUT7Qi5Gp5bhMuXmiyT78SCNnEcTAP2PbZtmSRjQ9/H/mRjoJsg01sbiwSawcj+AW2U227h/BuH2uryJ1OE4aTbMSK3vrZRQvWQUcwIDAQAB",
   "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "tabCapture", "offscreen", "storage", "unlimitedStorage", "downloads"],
+  "permissions": [
+    "activeTab",
+    "tabCapture",
+    "offscreen",
+    "storage",
+    "unlimitedStorage",
+    "downloads",
+    "nativeMessaging"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -25,7 +34,9 @@
   },
   "commands": {
     "toggle-recording": {
-      "suggested_key": { "default": "Alt+Shift+R" },
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
       "description": "Start or stop recording the current tab"
     }
   }

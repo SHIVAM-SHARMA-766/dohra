@@ -1,0 +1,46 @@
+main {
+  max-width: 720px;
+  margin: 48px auto;
+  padding: 0 16px;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 28px 0 8px;
+}
+
+.status {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 14px 14px;
+}
+
+#status[data-ready="true"] {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.platform h3 {
+  font-size: 14px;
+  margin: 18px 0 6px;
+}
+
+.platform.current h3::after {
+  content: " — this computer";
+  color: var(--muted);
+  font-weight: 400;
+}
+
+pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  overflow-x: auto;
+  font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+code {
+  font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+}

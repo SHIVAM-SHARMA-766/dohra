@@ -1,9 +1,11 @@
-// The library: lists recordings stored in the extension, plays them, exports them to
-// Downloads, deletes them, and finalizes recordings that a crash left unfinished.
+// The library: lists recordings stored in the extension with their transcript state,
+// opens them, exports them to Downloads, deletes them, and finalizes recordings
+// that a crash left unfinished.
 
 import { ACTIVE_KEY, errorMessage, type ActiveRecording } from "../lib/messages";
 import { EXPORT_DIR, FILES, formatBytes, formatDuration, type SessionMeta } from "../lib/session";
 import { deleteSession, listSessions, recordingFile, StorageWorker } from "../lib/storage";
+import { readTranscript, TRANSCRIPTS_KEY, type TranscriptState, type TranscriptStatus } from "../lib/transcript";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -11,12 +13,10 @@ const list = $<HTMLUListElement>("list");
 const empty = $<HTMLParagraphElement>("empty");
 const notice = $<HTMLParagraphElement>("notice");
 const search = $<HTMLInputElement>("search");
-const player = $<HTMLElement>("player");
-const media = $<HTMLVideoElement>("media");
 
 let sessions: SessionMeta[] = [];
 let activeId: string | null = null;
-let playingUrl: string | null = null;
+let transcriptStates: Record<string, TranscriptState | undefined> = {};
 
 function showNotice(text: string | null): void {
   notice.textContent = text ?? "";
@@ -58,24 +58,8 @@ async function updateUsage(): Promise<void> {
 
 // ---- actions ------------------------------------------------------------------------
 
-async function play(s: SessionMeta): Promise<void> {
-  closePlayer();
-  playingUrl = URL.createObjectURL(await recordingFile(s.id));
-  $<HTMLElement>("player-title").textContent = s.title;
-  media.classList.toggle("audio-only", s.mode === "audio");
-  media.src = playingUrl;
-  player.hidden = false;
-  player.scrollIntoView({ behavior: "smooth", block: "start" });
-  void media.play();
-}
-
-function closePlayer(): void {
-  media.pause();
-  media.removeAttribute("src");
-  media.load();
-  if (playingUrl) URL.revokeObjectURL(playingUrl);
-  playingUrl = null;
-  player.hidden = true;
+function open(s: SessionMeta): void {
+  location.href = `session.html?id=${encodeURIComponent(s.id)}`;
 }
 
 function download(url: string, filename: string): Promise<void> {
@@ -119,7 +103,6 @@ async function exportSession(s: SessionMeta): Promise<void> {
 async function remove(s: SessionMeta): Promise<void> {
   const where = s.exportedAt ? " The copy in Downloads is not affected." : " It has not been copied to Downloads.";
   if (!confirm(`Delete "${s.title}" from Dohra?${where}`)) return;
-  closePlayer();
   await deleteSession(s.id);
 }
 
@@ -151,6 +134,14 @@ function button(label: string, onClick: (b: HTMLButtonElement) => void, classNam
   return b;
 }
 
+const TRANSCRIPT_TAG: Record<TranscriptState | "none", [string, string] | null> = {
+  none: null,
+  live: ["Transcribing", "info"],
+  transcribing: ["Transcribing", "info"],
+  complete: ["Transcript", "ok"],
+  failed: ["Transcript failed", "bad"],
+};
+
 function stateLabel(s: SessionMeta): [string, string] | null {
   if (s.id === activeId) return ["Recording now", "live"];
   if (s.state === "failed") return ["Failed", "bad"];
@@ -167,6 +158,8 @@ function renderItem(s: SessionMeta): HTMLLIElement {
   const title = el("div", "title", s.title);
   const label = stateLabel(s);
   if (label) title.append(" ", el("span", `tag ${label[1]}`, label[0]));
+  const transcript = TRANSCRIPT_TAG[transcriptStates[s.id] ?? "none"];
+  if (transcript) title.append(" ", el("span", `tag ${transcript[1]}`, transcript[0]));
   info.append(title);
 
   const started = new Date(s.startedAt);
@@ -190,7 +183,7 @@ function renderItem(s: SessionMeta): HTMLLIElement {
   const actions = el("div", "actions");
   if (s.state === "complete") {
     actions.append(
-      button("Play", (b) => void run(() => play(s), b), "primary"),
+      button("Open", () => open(s), "primary"),
       button(s.exportedAt ? "Save again" : "Save to Downloads", (b) => void run(() => exportSession(s), b)),
     );
   }
@@ -208,9 +201,19 @@ function render(): void {
   if (sessions.length > 0 && shown.length === 0) list.append(el("li", "hint", "No titles match."));
 }
 
+async function loadTranscriptStates(): Promise<void> {
+  const { [TRANSCRIPTS_KEY]: live } = await chrome.storage.session.get(TRANSCRIPTS_KEY);
+  const statuses = (live as Record<string, TranscriptStatus> | undefined) ?? {};
+  const entries = await Promise.all(
+    sessions.map(async (s) => [s.id, statuses[s.id]?.state ?? (await readTranscript(s.id))?.state] as const),
+  );
+  transcriptStates = Object.fromEntries(entries);
+}
+
 async function refresh(): Promise<void> {
   activeId = await activeSessionId();
   sessions = await listSessions();
+  await loadTranscriptStates();
   render();
   await updateUsage();
 }
@@ -228,10 +231,9 @@ async function main(): Promise<void> {
   }
 
   search.addEventListener("input", render);
-  $<HTMLButtonElement>("player-close").addEventListener("click", closePlayer);
   // Pick up a recording as soon as it finishes.
   chrome.storage.session.onChanged.addListener((changes) => {
-    if (ACTIVE_KEY in changes) void refresh();
+    if (ACTIVE_KEY in changes || TRANSCRIPTS_KEY in changes) void refresh();
   });
 }
 

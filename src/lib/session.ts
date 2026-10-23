@@ -41,6 +41,7 @@ export const FILES = {
   raw: "raw.webm", // written while recording; replaced by recording.webm when finalized
   recording: "recording.webm",
   meta: "session.json",
+  transcript: "transcript.json",
 } as const;
 
 export const SESSIONS_DIR = "sessions";

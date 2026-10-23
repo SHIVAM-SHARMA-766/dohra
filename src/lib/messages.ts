@@ -13,6 +13,8 @@ export interface StartOptions {
   mic: boolean;
   /** e.g. "dohra-extension/0.1.0". Offscreen documents cannot read the manifest themselves. */
   recorder: string;
+  /** Tap audio for the companion; set only once it has accepted the session. */
+  transcribe: boolean;
 }
 
 /** Popup (or keyboard shortcut) → background. */
@@ -20,14 +22,23 @@ export type BackgroundRequest =
   | { target: "background"; type: "start"; tabId: number; title: string }
   | { target: "background"; type: "stop" }
   | { target: "background"; type: "pause" }
-  | { target: "background"; type: "resume" };
+  | { target: "background"; type: "resume" }
+  /** Pages ask for the companion's state (replies with CompanionInfo). */
+  | { target: "background"; type: "companion-status" }
+  /** Transcribing a finished recording: the page decodes it and streams the audio. */
+  | { target: "background"; type: "transcribe-start"; sessionId: string }
+  | { target: "background"; type: "transcribe-audio"; sessionId: string; pcm: string }
+  | { target: "background"; type: "transcribe-stop"; sessionId: string };
 
 /** Offscreen recorder → background. */
 export type RecorderEvent =
   | { target: "background"; type: "recorder-progress"; progress: Progress }
   | { target: "background"; type: "recorder-finalizing" }
   | { target: "background"; type: "recorder-finished"; meta: SessionMeta; files: ExportFile[] }
-  | { target: "background"; type: "recorder-failed"; error: string };
+  | { target: "background"; type: "recorder-failed"; error: string }
+  /** One block of 16 kHz PCM (base64) for transcription. */
+  | { target: "background"; type: "recorder-audio"; stream: "them" | "me"; pcm: string }
+  | { target: "background"; type: "recorder-tap-failed"; error: string };
 
 /**
  * Recorded time as of `at` (epoch ms). Pages add `Date.now() - at` while not paused,
@@ -54,7 +65,7 @@ export type OffscreenRequest =
   /** Sent once exported files are saved (or failed), so the recorder can record that and shut down. */
   | { target: "offscreen"; type: "exported"; ok: boolean };
 
-export type Reply = { ok: true } | { ok: false; error: string };
+export type Reply = { ok: true; data?: unknown } | { ok: false; error: string };
 
 export type ActiveStatus = "starting" | "recording" | "paused" | "finalizing" | "exporting";
 

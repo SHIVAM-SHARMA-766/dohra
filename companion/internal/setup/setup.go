@@ -17,8 +17,9 @@ import (
 )
 
 type Options struct {
-	Models []string // which models to download; the first becomes the default
-	Out    io.Writer
+	Models     []string // which models to download; the first becomes the default
+	NoRegister bool     // skip browser registration (tests register into their own profile)
+	Out        io.Writer
 }
 
 // Install is idempotent: files already present with the right checksum are
@@ -62,6 +63,10 @@ func Install(ctx context.Context, opts Options) error {
 		return err
 	}
 
+	if opts.NoRegister {
+		fmt.Fprintf(out, "\nDone. Default model: %s. Not registered with any browser.\n", cfg.Model)
+		return nil
+	}
 	registered, err := Register(exe)
 	if err != nil {
 		return fmt.Errorf("register with the browser: %w", err)
