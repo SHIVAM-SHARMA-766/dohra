@@ -3,11 +3,13 @@
 // One native-messaging port carries every session. An open port also keeps the
 // service worker alive, which matters after a class: the companion may still be
 // catching up for several minutes, and its "lines" and "done" events must have
-// somewhere to go. The port is closed once nothing is in progress.
+// somewhere to go. The same holds for speech-model downloads, which the companion
+// runs and which stop if it exits. The port is closed once nothing is in progress.
 //
 // Each time lines arrive, the transcript is fetched from the companion in pages
 // and rewritten in the session folder, so pages can show it while it grows.
 
+import type { ModelAction } from "../lib/messages";
 import { EXPORT_DIR, FILES, SESSIONS_DIR } from "../lib/session";
 import { loadSettings } from "../lib/settings";
 import {
@@ -16,6 +18,7 @@ import {
   TRANSCRIPTS_KEY,
   writeTranscript,
   type CompanionInfo,
+  type ModelInfo,
   type Transcript,
   type TranscriptLine,
   type TranscriptState,
@@ -33,6 +36,8 @@ interface Hello {
   problems: string[] | null;
   model: string;
   language: string;
+  cpus: number;
+  models: ModelInfo[] | null;
 }
 
 type CompanionEvent =
@@ -40,13 +45,17 @@ type CompanionEvent =
   | { type: "progress"; sessionId: string; state: string; receivedMs: number; doneMs: number }
   | { type: "lines"; sessionId: string; lines: TranscriptLine[] }
   | { type: "done"; sessionId: string; state: "complete" | "failed"; error?: string }
-  | { type: "error"; sessionId?: string; error: string };
+  | { type: "error"; sessionId?: string; error: string }
+  | { type: "model-progress"; model: string; done: number; size: number }
+  | { type: "model-done"; model: string; error?: string };
 
 let port: chrome.runtime.Port | null = null;
 let nextId = 1;
 const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 /** Sessions the companion is still working on; the port stays open while any exist. */
 const inProgress = new Set<string>();
+/** Models the companion is downloading; these too keep the port open. */
+const downloading = new Set<string>();
 const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
 let hello: Hello | null = null;
@@ -62,6 +71,10 @@ function connect(): chrome.runtime.Port {
     hello = null;
     for (const { reject } of pending.values()) reject(new Error(reason));
     pending.clear();
+    if (downloading.size > 0) {
+      downloading.clear();
+      void publish(null, reason);
+    }
     // Unfinished sessions resume the next time the companion starts.
     for (const id of inProgress) void setStatus(id, { error: `paused: ${reason}` });
   });
@@ -91,11 +104,15 @@ function request<T>(msg: Record<string, unknown>): Promise<T> {
   });
 }
 
+function busy(): boolean {
+  return inProgress.size > 0 || downloading.size > 0;
+}
+
 function scheduleDisconnect(): void {
   clearTimeout(idleTimer);
-  if (inProgress.size > 0) return;
+  if (busy()) return;
   idleTimer = setTimeout(() => {
-    if (inProgress.size === 0 && pending.size === 0) {
+    if (!busy() && pending.size === 0) {
       port?.disconnect();
       port = null;
     }
@@ -128,19 +145,51 @@ function isForbidden(message: string): boolean {
   return /forbidden|not allowed/i.test(message);
 }
 
+function infoFrom(h: Hello): CompanionInfo {
+  return {
+    installed: true,
+    ready: h.ready,
+    version: h.version,
+    model: h.model || null,
+    problems: h.problems ?? [],
+    cpus: h.cpus ?? 0,
+    models: h.models ?? [],
+    checkedAt: Date.now(),
+  };
+}
+
+/**
+ * Stores the companion's state for pages to show. With no hello (the companion
+ * went away mid-download), the last known state is kept with downloads marked
+ * as stopped.
+ */
+async function publish(h: Hello | null, stoppedBecause?: string): Promise<CompanionInfo | null> {
+  if (h) {
+    hello = h;
+    for (const m of h.models ?? []) {
+      if (m.downloading) downloading.add(m.name);
+      else downloading.delete(m.name);
+    }
+    const info = infoFrom(h);
+    await chrome.storage.session.set({ [COMPANION_KEY]: info });
+    return info;
+  }
+  const { [COMPANION_KEY]: last } = await chrome.storage.session.get(COMPANION_KEY);
+  const info = last as CompanionInfo | undefined;
+  if (!info) return null;
+  info.models = info.models.map((m) =>
+    m.downloading ? { ...m, downloading: false, error: `stopped: ${stoppedBecause ?? "the companion exited"}` } : m,
+  );
+  await chrome.storage.session.set({ [COMPANION_KEY]: info });
+  return info;
+}
+
 /** Connects (starting the companion if needed) and reports what it can do. */
 export async function checkCompanion(): Promise<CompanionInfo> {
   let info: CompanionInfo;
   try {
-    hello ??= await request<Hello>({ type: "hello" });
-    info = {
-      installed: true,
-      ready: hello.ready,
-      version: hello.version,
-      model: hello.model,
-      problems: hello.problems ?? [],
-      checkedAt: Date.now(),
-    };
+    // Always fresh: a model may have been installed or switched since the last check.
+    info = (await publish(await request<Hello>({ type: "hello" })))!;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     info = {
@@ -155,12 +204,33 @@ export async function checkCompanion(): Promise<CompanionInfo> {
             ? "The companion does not recognise this copy of Dohra. In chrome://extensions, remove Dohra and load it again with Load unpacked."
             : message,
       ],
+      cpus: 0,
+      models: [],
       checkedAt: Date.now(),
     };
+    await chrome.storage.session.set({ [COMPANION_KEY]: info });
   }
-  await chrome.storage.session.set({ [COMPANION_KEY]: info });
   scheduleDisconnect();
   return info;
+}
+
+/** Downloads, cancels, removes or switches to a speech model. */
+export async function manageModel(action: ModelAction, model: string): Promise<CompanionInfo> {
+  const h = await request<Hello>({ type: `model-${action}`, model });
+  const info = (await publish(h))!;
+  scheduleDisconnect();
+  return info;
+}
+
+/** Keeps a download's progress current for open pages, without asking the companion. */
+async function onModelProgress(model: string, done: number): Promise<void> {
+  downloading.add(model);
+  clearTimeout(idleTimer);
+  const { [COMPANION_KEY]: last } = await chrome.storage.session.get(COMPANION_KEY);
+  const info = last as CompanionInfo | undefined;
+  if (!info) return;
+  info.models = info.models.map((m) => (m.name === model ? { ...m, downloading: true, done, error: undefined } : m));
+  await chrome.storage.session.set({ [COMPANION_KEY]: info });
 }
 
 // ---- sessions ----------------------------------------------------------------------
@@ -232,6 +302,17 @@ async function onEvent(msg: CompanionEvent): Promise<void> {
       return;
     case "error":
       if (msg.sessionId) await setStatus(msg.sessionId, { error: msg.error });
+      return;
+    case "model-progress":
+      await onModelProgress(msg.model, msg.done);
+      return;
+    case "model-done":
+      downloading.delete(msg.model);
+      // A finished first model becomes active, so the whole state may have changed.
+      try {
+        await publish(await request<Hello>({ type: "hello" }));
+      } catch {}
+      scheduleDisconnect();
       return;
   }
 }

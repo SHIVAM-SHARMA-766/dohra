@@ -1,0 +1,112 @@
+main {
+  max-width: 720px;
+  margin: 40px auto;
+  padding: 0 16px;
+}
+
+h1 {
+  font-size: 24px;
+  margin: 12px 0 6px;
+}
+
+.lead {
+  color: var(--muted);
+  margin: 0 0 24px;
+}
+
+.steps {
+  list-style: none;
+  counter-reset: step;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.step {
+  counter-increment: step;
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px 14px 56px;
+}
+
+.step::before {
+  content: counter(step);
+  position: absolute;
+  left: 16px;
+  top: 14px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.step[data-done="true"]::before {
+  content: "✓";
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--bg);
+}
+
+.step h2 {
+  font-size: 16px;
+  margin: 2px 0 6px;
+}
+
+.step p {
+  margin: 6px 0;
+}
+
+.state:empty {
+  display: none;
+}
+
+.step[data-done="true"] .state {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+#done {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--ok);
+}
+
+#done h2 {
+  font-size: 16px;
+  margin: 0 0 6px;
+  color: var(--ok);
+}
+
+.platform h3 {
+  font-size: 14px;
+  margin: 14px 0 6px;
+}
+
+.platform.current h3::after {
+  content: " — this computer";
+  color: var(--muted);
+  font-weight: 400;
+}
+
+pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  overflow-x: auto;
+  font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (max-width: 480px) {
+  .step {
+    padding-left: 16px;
+    padding-top: 48px;
+  }
+}

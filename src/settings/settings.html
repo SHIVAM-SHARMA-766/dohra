@@ -19,12 +19,11 @@
       <section>
         <h2>Every recording</h2>
         <ul class="fixed">
-          <li><strong>Audio and video</strong>, at your screen's full resolution (<span id="resolution"></span>).</li>
+          <li><strong>Audio and video</strong>, at the best quality your screen allows.</li>
           <li><strong>A transcript</strong>, made on this computer by the companion while you record.</li>
           <li><strong>Spoken language detected automatically</strong>, line by line, so Hindi, English and Hinglish can mix freely.</li>
           <li><strong>Your microphone</strong>, unless you allow switching it off below.</li>
         </ul>
-        <p class="hint">About <span id="estimate"></span> of disk per hour at this resolution.</p>
       </section>
 
       <section>
@@ -52,9 +51,13 @@
       </section>
 
       <section>
-        <h2>Transcription companion</h2>
+        <h2>Speech model</h2>
+        <p class="hint">
+          Used for every transcript. Switching applies to everything not transcribed yet, including a class in
+          progress.
+        </p>
         <p id="companion" role="status">Checking…</p>
-        <p><a href="companion.html">Setup and status</a></p>
+        <div id="models" class="models"></div>
       </section>
 
       <p id="saved" class="hint" aria-live="polite"></p>

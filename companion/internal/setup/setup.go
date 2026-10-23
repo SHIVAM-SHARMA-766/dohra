@@ -1,5 +1,7 @@
-// Package setup installs the companion: its own binary, whisper.cpp, the
-// models, and the registration that lets the browser start it.
+// Package setup installs the companion: its own binary, whisper.cpp, the voice
+// detector, and the registration that lets the browser start it. Speech models
+// are chosen and downloaded from Dohra itself (package models); Options.Models
+// exists for scripted installs and tests.
 package setup
 
 import (
@@ -11,13 +13,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/config"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/paths"
 )
 
 type Options struct {
-	Models     []string // which models to download; the first becomes the default
+	Models     []string // models to download now; the first becomes active. Usually empty.
 	NoRegister bool     // skip browser registration (tests register into their own profile)
 	Out        io.Writer
 }
@@ -26,12 +29,9 @@ type Options struct {
 // kept, so re-running it after a failure picks up where it stopped.
 func Install(ctx context.Context, opts Options) error {
 	out := opts.Out
-	if len(opts.Models) == 0 {
-		opts.Models = []string{config.Default().Model}
-	}
 	for _, m := range opts.Models {
 		if _, ok := config.Models[m]; !ok {
-			return fmt.Errorf("unknown model %q (choose small or medium)", m)
+			return fmt.Errorf("unknown model %q (choose %s)", m, strings.Join(config.ModelNames, ", "))
 		}
 	}
 
@@ -47,7 +47,7 @@ func Install(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	fmt.Fprintln(out, "Models:")
+	fmt.Fprintln(out, "Voice detector and models:")
 	if err := Download(ctx, config.VAD.Asset, config.VADPath(), out); err != nil {
 		return err
 	}
@@ -58,13 +58,15 @@ func Install(ctx context.Context, opts Options) error {
 	}
 
 	cfg, _ := config.Load()
-	cfg.Model = opts.Models[0]
+	if len(opts.Models) > 0 {
+		cfg.Model = opts.Models[0]
+	}
 	if err := config.Save(cfg); err != nil {
 		return err
 	}
 
 	if opts.NoRegister {
-		fmt.Fprintf(out, "\nDone. Default model: %s. Not registered with any browser.\n", cfg.Model)
+		fmt.Fprintln(out, "\nDone. Not registered with any browser.")
 		return nil
 	}
 	registered, err := Register(exe)
@@ -75,7 +77,7 @@ func Install(ctx context.Context, opts Options) error {
 	for _, r := range registered {
 		fmt.Fprintf(out, "  %s\n", r)
 	}
-	fmt.Fprintf(out, "\nDone. Default model: %s. Reload Dohra in the browser to pick it up.\n", cfg.Model)
+	fmt.Fprintln(out, "\nDone. Go back to Dohra in the browser to choose a speech model.")
 	return nil
 }
 

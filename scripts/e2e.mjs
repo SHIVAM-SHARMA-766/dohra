@@ -4,6 +4,8 @@
 //   npm run build && npm run e2e      (Linux: runs under xvfb-run, no window appears)
 //
 // Scenarios:
+//   0. first-run setup page: microphone and companion shown as done, then the Small
+//      speech model downloaded from the page and made active
 //   1. video + mic, with a pause in the middle, stopped from the popup
 //   2. stopped by closing the recorded tab
 //   3. browser killed mid-recording, then recovered by the library on next launch
@@ -21,9 +23,11 @@
 //
 // Environment: CHROME=/path/to/chromium (default /usr/bin/chromium). The GStreamer
 // check is skipped when its Python bindings are missing, unless REQUIRE_GSTREAMER=1
-// (set on CI). Scenarios 5-6 build the companion with Go and install it with the
-// small model into .e2e-cache/ (about 200 MB, downloaded once); E2E_TRANSCRIBE=0
-// skips them. The companion is registered only with the test profile.
+// (set on CI). Scenarios 0, 5 and 6 build the companion with Go and install it into
+// .e2e-cache/; the Small model (about 200 MB) is downloaded by scenario 0 through the
+// setup page, once, then kept in the cache as a complete partial download that the
+// page "resumes". E2E_TRANSCRIBE=0 skips them. The companion is registered only with
+// the test profile.
 //
 // Two browser constraints shape this script:
 // - Headless Chromium has no audio pipeline, so captured tab audio is pure silence.
@@ -33,7 +37,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -129,11 +133,21 @@ async function fetchVerified({ url, sha256, path }) {
   await writeFile(path, data);
 }
 
-/** Builds the companion, installs it with the small model, and registers it with the test profile only. */
+/**
+ * Builds and installs the companion without a speech model, as a user's first
+ * install is, and registers it with the test profile only.
+ */
 async function setupCompanion() {
   run("go", ["build", "-o", companionBin, "."], { cwd: join(root, "companion") });
   const env = { ...process.env, DOHRA_HOME: dohraHome };
-  run(companionBin, ["install", "--model", "small", "--no-register"], { env });
+  // Undo the previous run's model choice; a cached model becomes a finished partial download.
+  await rm(join(dohraHome, "config.json"), { force: true });
+  for (const name of await readdir(join(dohraHome, "models")).catch(() => [])) {
+    if (name.startsWith("ggml-") && !name.includes("silero") && !name.endsWith(".part")) {
+      await rename(join(dohraHome, "models", name), join(dohraHome, "models", name + ".part"));
+    }
+  }
+  run(companionBin, ["install", "--no-register"], { env });
   run(companionBin, ["register", "--browser-dir", profile], { env });
   await fetchVerified(JFK);
 }
@@ -166,7 +180,12 @@ async function launch() {
   const ext = (await browser.extensions()).get(id);
   if (!ext) throw new Error("extension did not load");
   await browser.defaultBrowserContext().overridePermissions(`chrome-extension://${id}`, ["microphone"]);
-  return { browser, ext };
+  // A first install opens the setup page. Close it: a stray tab can take focus from the popup.
+  const setupTab = await browser
+    .waitForTarget((t) => t.url() === `chrome-extension://${id}/setup.html`, { timeout: 5_000 })
+    .catch(() => null);
+  if (setupTab) await (await setupTab.page())?.close();
+  return { browser, ext, openedSetup: !!setupTab };
 }
 
 /**
@@ -416,10 +435,34 @@ async function main() {
   const server = await serve();
   const url = `http://127.0.0.1:${server.address().port}/`;
 
-  let { browser, ext } = await launch();
+  let { browser, ext, openedSetup } = await launch();
   try {
-    console.log("\n1. video + mic, paused midway, stopped from the popup");
+    check(openedSetup, "installing opens the setup page");
     await grantMic(browser, ext);
+    if (TRANSCRIBE) {
+      console.log("\n0. first-run setup: download a speech model from the page");
+      const setup = await browser.newPage();
+      await setup.goto(`chrome-extension://${ext.id}/setup.html`);
+      await setup.waitForSelector('.model[data-model="small"] button', { timeout: 30_000 });
+      const before = await setup.evaluate(() => ({
+        mic: document.getElementById("step-mic").dataset.done,
+        companion: document.getElementById("step-companion").dataset.done,
+        model: document.getElementById("step-model").dataset.done,
+        models: [...document.querySelectorAll(".model")].map((m) => m.dataset.model).join(","),
+      }));
+      check(before.mic === "true" && before.companion === "true", "setup shows microphone and companion done", JSON.stringify(before));
+      check(before.model === "false" && before.models === "small,medium,large", "setup offers Small, Medium and High", before.models);
+      await setup.$eval('.model[data-model="small"] .model-actions button', (b) => b.click());
+      await setup.waitForSelector('.model[data-model="small"][data-state="active"]', { timeout: 900_000 });
+      const after = await setup.evaluate(() => ({
+        model: document.getElementById("step-model").dataset.done,
+        done: !document.getElementById("done").hidden,
+      }));
+      check(after.model === "true" && after.done, "the downloaded model is in use and setup is complete", JSON.stringify(after));
+      await setup.close();
+    }
+
+    console.log("\n1. video + mic, paused midway, stopped from the popup");
     const control = await controlPage(browser, ext);
     const page = await browser.newPage();
     await page.goto(url);
@@ -432,7 +475,7 @@ async function main() {
     }));
     await popup.close().catch(() => {});
     check(quick.choices === 0 && quick.micSwitchHidden, "quick start offers no format, transcript or language choices");
-    check(/Audio \+ video at \d+×\d+ · microphone · transcript/.test(quick.summary), "quick start states what is recorded", quick.summary);
+    check(quick.summary === "Audio + video · microphone · transcript", "quick start states what is recorded", quick.summary);
     const one = await startRecording(browser, page, ext, control, { title: "E2E video", mic: process.env.E2E_MIC !== "0" });
     await sleep(6_000);
     await command(control, "pause");

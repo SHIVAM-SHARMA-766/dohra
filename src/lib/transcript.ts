@@ -40,13 +40,27 @@ export interface TranscriptStatus {
 
 export const TRANSCRIPTS_KEY = "transcripts";
 
-/** What the companion reported on connecting, under COMPANION_KEY. */
+/** One speech model, as the companion reports it. */
+export interface ModelInfo {
+  name: string; // "small" | "medium" | "large"
+  label: string; // Small, Medium, High
+  size: number; // bytes
+  installed: boolean;
+  active: boolean;
+  downloading: boolean;
+  done: number; // bytes so far, while downloading
+  error?: string; // why the last download failed
+}
+
+/** What the companion reported, under COMPANION_KEY; kept current during model downloads. */
 export interface CompanionInfo {
   installed: boolean;
   ready: boolean;
   version: string | null;
   model: string | null;
   problems: string[];
+  cpus: number;
+  models: ModelInfo[];
   checkedAt: number;
 }
 

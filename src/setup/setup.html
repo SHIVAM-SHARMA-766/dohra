@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Set up Dohra</title>
+    <link rel="stylesheet" href="ui.css" />
+    <link rel="stylesheet" href="setup.css" />
+  </head>
+  <body>
+    <main>
+      <p class="brand"><span class="dot"></span>Dohra</p>
+      <h1>Set up Dohra</h1>
+      <p class="lead">
+        Dohra records your online classes on this computer, with a transcript you can search later. Nothing is
+        uploaded. Three steps, once.
+      </p>
+
+      <ol class="steps">
+        <li class="step" id="step-mic">
+          <h2>Allow the microphone</h2>
+          <p>So your own questions and answers are in the recording too.</p>
+          <p id="mic-status" class="state" role="status"></p>
+          <button id="allow-mic" class="primary" hidden>Allow microphone</button>
+        </li>
+
+        <li class="step" id="step-companion">
+          <h2>Install the companion</h2>
+          <p>
+            A small program (about 40&nbsp;MB) that makes transcripts on this computer with
+            <a href="https://github.com/ggml-org/whisper.cpp" target="_blank" rel="noreferrer">whisper.cpp</a>. The
+            browser starts it when needed; no audio leaves the machine.
+          </p>
+          <p id="companion-status" class="state" role="status">Checking…</p>
+          <div id="companion-install" hidden>
+            <p>
+              Run these in a terminal. They need the
+              <a href="https://cli.github.com" target="_blank" rel="noreferrer">GitHub CLI</a> signed in to an account
+              with access to the Dohra repository. This page notices by itself when it is done.
+            </p>
+            <div id="platforms"></div>
+          </div>
+        </li>
+
+        <li class="step" id="step-model">
+          <h2>Choose a speech model</h2>
+          <p>
+            The model turns speech into text. Bigger models understand Hindi and Hinglish better but need more time.
+            You can download another one, or switch, any time in Dohra's Settings.
+          </p>
+          <p id="model-wait" class="hint">Available once the companion is installed.</p>
+          <div id="models" class="models"></div>
+        </li>
+      </ol>
+
+      <section id="done" hidden>
+        <h2>You're all set</h2>
+        <p>
+          Open your class in a tab and click the Dohra icon, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.
+          Recordings and transcripts appear in the <a href="library.html">Library</a>.
+        </p>
+      </section>
+    </main>
+    <script src="setup.js"></script>
+  </body>
+</html>

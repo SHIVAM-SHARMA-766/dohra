@@ -1,10 +1,10 @@
 // Dohra's settings page. Recording format, transcription and language are fixed;
-// what can change is whether the popup offers a microphone switch, and the
-// Downloads copy.
+// what can change is whether the popup offers a microphone switch, the Downloads
+// copy, and the speech model.
 
 import type { Reply } from "../lib/messages";
-import { formatBytes } from "../lib/session";
-import { estimateBytesPerHour, loadSettings, saveSettings, screenResolution } from "../lib/settings";
+import { mountModelPicker } from "../lib/model-picker";
+import { loadSettings, saveSettings } from "../lib/settings";
 import type { CompanionInfo } from "../lib/transcript";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -37,6 +37,11 @@ async function showMicPermission(): Promise<void> {
   el.append(link);
 }
 
+function companionText(info: CompanionInfo): string {
+  if (info.ready) return `Companion ${info.version} is ready.`;
+  return info.problems.join(" ") || "Not ready.";
+}
+
 async function showCompanion(): Promise<void> {
   const el = $<HTMLElement>("companion");
   try {
@@ -46,19 +51,26 @@ async function showCompanion(): Promise<void> {
     const info = reply.data as CompanionInfo | undefined;
     if (!info) throw new Error("Dohra was updated but not reloaded — reload it in chrome://extensions");
     el.dataset.ready = String(info.ready);
-    el.textContent = info.ready
-      ? `Ready — companion ${info.version}, ${info.model} model.`
-      : info.problems.join(" ") || "Not ready.";
+    el.textContent = companionText(info);
+    if (info.version === null) {
+      // Without the companion there are no models to manage: point to setup.
+      el.append(" ");
+      const link = document.createElement("a");
+      link.href = "setup.html";
+      link.textContent = "Set up transcription";
+      el.append(link);
+      return;
+    }
+    mountModelPicker($<HTMLElement>("models"), info, (updated) => {
+      el.dataset.ready = String(updated.ready);
+      el.textContent = companionText(updated);
+    });
   } catch (e) {
     el.textContent = e instanceof Error ? e.message : String(e);
   }
 }
 
 async function main(): Promise<void> {
-  const { width, height } = screenResolution();
-  $<HTMLElement>("resolution").textContent = `${width}×${height}`;
-  $<HTMLElement>("estimate").textContent = formatBytes(estimateBytesPerHour(width, height));
-
   const settings = await loadSettings();
   micSwitch.checked = settings.micSwitchInPopup;
   autoExport.checked = settings.autoExport;

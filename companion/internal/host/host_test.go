@@ -7,9 +7,14 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 
+	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/config"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/engine"
+	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/models"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/nm"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/store"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/whisper"
@@ -52,7 +57,7 @@ func run(t *testing.T, h *Host, reqs ...any) []map[string]any {
 }
 
 func TestNotReady(t *testing.T) {
-	h := &Host{Hello: Hello{Version: "test", Problems: []string{"model missing"}}}
+	h := &Host{Version: "test", State: func() (config.Config, []string) { return config.Config{}, []string{"model missing"} }}
 	msgs := run(t, h,
 		map[string]any{"id": 1, "type": "hello"},
 		map[string]any{"id": 2, "type": "start", "sessionId": "s"},
@@ -68,7 +73,8 @@ func TestNotReady(t *testing.T) {
 func TestRequestFlow(t *testing.T) {
 	noop := func(context.Context, whisper.Options, []int16) (whisper.Result, error) { return whisper.Result{}, nil }
 	e := engine.New(engine.Config{LiveThreads: 1, IdleThreads: 1}, store.New(t.TempDir()), func(any) {}, noop, log.New(io.Discard, "", 0))
-	h := &Host{Engine: e, Hello: Hello{Ready: true, Language: "hi"}}
+	h := &Host{State: func() (config.Config, []string) { return config.Config{Language: "hi"}, nil }}
+	h.SetEngine(e)
 	pcm := base64.StdEncoding.EncodeToString(make([]byte, 3200))
 	msgs := run(t, h,
 		map[string]any{"id": 1, "type": "start", "sessionId": "s"},
@@ -87,5 +93,81 @@ func TestRequestFlow(t *testing.T) {
 	status := msgs[2]["data"].([]any)
 	if len(status) != 1 || status[0].(map[string]any)["receivedMs"] != float64(100) {
 		t.Fatalf("status %v", status)
+	}
+}
+
+// A companion installed without a model: setup downloads one, it becomes
+// active, and the engine starts without a restart.
+func TestFirstModelStartsEngine(t *testing.T) {
+	t.Setenv("DOHRA_HOME", t.TempDir())
+	model := "small"
+	fake := func(_ context.Context, a config.Asset, dest string, report func(int64)) error {
+		report(a.Size / 2)
+		if a.SHA256 == config.Models[model].SHA256 {
+			// Stand in for the real file: Installed only checks the size.
+			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+				return err
+			}
+			f, err := os.Create(dest)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			return f.Truncate(a.Size)
+		}
+		return nil
+	}
+	active := ""
+	started := 0
+	h := &Host{
+		State: func() (config.Config, []string) {
+			if !config.Installed(active) {
+				return config.Config{Model: active}, []string{"no model"}
+			}
+			return config.Config{Model: active}, nil
+		},
+		SaveModel: func(name string) error { active = name; return nil },
+		StartEngine: func(context.Context, config.Config) *engine.Engine {
+			started++
+			return engine.New(engine.Config{}, store.New(t.TempDir()), func(any) {}, nil, log.New(io.Discard, "", 0))
+		},
+	}
+	var events []any
+	var mu sync.Mutex
+	h.Models = models.New(fake, func(v any) { mu.Lock(); events = append(events, v); mu.Unlock() }, h.ModelInstalled)
+
+	msgs := run(t, h, map[string]any{"id": 1, "type": "model-install", "model": model})
+	h.Models.Wait()
+	if msgs[0]["ok"] != true {
+		t.Fatalf("install reply %v", msgs[0])
+	}
+	if active != model || started != 1 || h.Engine() == nil {
+		t.Fatalf("after install: active %q, engine started %d times", active, started)
+	}
+	if last, ok := events[len(events)-1].(models.Finished); !ok || last.Error != "" {
+		t.Fatalf("last event %#v", events[len(events)-1])
+	}
+
+	hello := h.Hello()
+	if !hello.Ready || hello.Model != model {
+		t.Fatalf("hello %+v", hello)
+	}
+	for _, m := range hello.Models {
+		if (m.Name == model) != (m.Installed && m.Active) {
+			t.Fatalf("model list %+v", hello.Models)
+		}
+	}
+
+	// The active model cannot be removed; another, absent one can.
+	msgs = run(t, h,
+		map[string]any{"id": 2, "type": "model-remove", "model": model},
+		map[string]any{"id": 3, "type": "model-use", "model": "medium"},
+		map[string]any{"id": 4, "type": "model-remove", "model": "medium"},
+	)
+	if msgs[0]["ok"] != false || msgs[1]["ok"] != false || msgs[2]["ok"] != true {
+		t.Fatalf("replies %v", msgs)
+	}
+	if started != 1 {
+		t.Fatalf("engine started %d times", started)
 	}
 }

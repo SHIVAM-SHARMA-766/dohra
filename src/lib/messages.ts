@@ -23,10 +23,14 @@ export type BackgroundRequest =
   | { target: "background"; type: "resume" }
   /** Pages ask for the companion's state (replies with CompanionInfo). */
   | { target: "background"; type: "companion-status" }
+  /** Settings and setup manage speech models (replies with CompanionInfo). */
+  | { target: "background"; type: "model"; action: ModelAction; model: string }
   /** Transcribing a finished recording: the page decodes it and streams the audio. */
   | { target: "background"; type: "transcribe-start"; sessionId: string }
   | { target: "background"; type: "transcribe-audio"; sessionId: string; pcm: string }
   | { target: "background"; type: "transcribe-stop"; sessionId: string };
+
+export type ModelAction = "install" | "cancel" | "remove" | "use";
 
 /** Offscreen recorder → background. */
 export type RecorderEvent =

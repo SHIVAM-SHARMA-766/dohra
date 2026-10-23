@@ -22,7 +22,7 @@ const ExtensionID = "dkihabdjpgkkichdojcgbplmjkcboipg"
 const HostName = "com.dohra.companion"
 
 type Config struct {
-	Model       string `json:"model"`    // "small" or "medium"
+	Model       string `json:"model"`    // active model: "small", "medium" or "large" (High); chosen in Dohra
 	Language    string `json:"language"` // default for new sessions: "auto", "hi", "en", ...
 	LiveThreads int    `json:"liveThreads"`
 	IdleThreads int    `json:"idleThreads"`
@@ -33,7 +33,7 @@ type Config struct {
 // runs at about real time with 3 threads and 1.6x with 6.
 func Default() Config {
 	return Config{
-		Model:       "medium",
+		Model:       "", // none until the user installs one from Dohra
 		Language:    "auto",
 		LiveThreads: 3,
 		IdleThreads: max(2, min(8, runtime.NumCPU()/2)),
@@ -44,13 +44,23 @@ func Load() (Config, error) {
 	cfg := Default()
 	data, err := os.ReadFile(paths.ConfigFile())
 	if errors.Is(err, os.ErrNotExist) {
-		return cfg, nil
+		data = []byte("{}")
+		err = nil
 	}
 	if err != nil {
 		return cfg, err
 	}
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Default(), fmt.Errorf("config.json: %w", err)
+	}
+	if !Installed(cfg.Model) {
+		// The active model was removed by hand: fall back to any installed one.
+		for _, name := range []string{"medium", "small", "large"} {
+			if Installed(name) {
+				cfg.Model = name
+				break
+			}
+		}
 	}
 	return cfg, nil
 }
@@ -70,17 +80,30 @@ type Asset struct {
 	Size   int64
 }
 
-// Models are quantized ggml builds from the whisper.cpp project.
-var Models = map[string]struct {
-	File string
+// Model is a speech model the user can install from Dohra's setup or settings.
+type Model struct {
+	File  string
+	Label string // what Dohra shows: Small, Medium, High
 	Asset
-}{
-	"small": {"ggml-small-q5_1.bin", Asset{
+}
+
+// ModelNames lists the models from fastest to most accurate.
+var ModelNames = []string{"small", "medium", "large"}
+
+// Models are quantized ggml builds from the whisper.cpp project.
+var Models = map[string]Model{
+	"small": {"ggml-small-q5_1.bin", "Small", Asset{
 		"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
 		"ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb", 190085487}},
-	"medium": {"ggml-medium-q5_0.bin", Asset{
+	"medium": {"ggml-medium-q5_0.bin", "Medium", Asset{
 		"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin",
 		"19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f", 539212467}},
+	// large-v3-turbo: large-v3's encoder with a 4-layer decoder. On a 2-minute meeting
+	// sample it was as accurate as full large-v3 (which fell into a repetition loop),
+	// at twice its speed and half its memory (0.9 GB against 2.1 GB).
+	"large": {"ggml-large-v3-turbo-q5_0.bin", "High", Asset{
+		"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+		"394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", 574041195}},
 }
 
 // VAD lets Whisper skip non-speech, where it otherwise tends to invent text.
@@ -132,13 +155,25 @@ func FindWhisper() (string, error) {
 	return "", errors.New("whisper-cli not found; run `dohra-companion install`")
 }
 
+// Installed reports whether a model's file is present and complete. The hash
+// was checked when it was downloaded; checking it again on every start would
+// read up to a gigabyte.
+func Installed(name string) bool {
+	m, ok := Models[name]
+	if !ok {
+		return false
+	}
+	info, err := os.Stat(ModelPath(name))
+	return err == nil && info.Size() == m.Size
+}
+
 // Problems lists what stops transcription from working, for the extension to show.
 func Problems(cfg Config) []string {
 	var out []string
-	if _, ok := Models[cfg.Model]; !ok {
+	if _, ok := Models[cfg.Model]; !ok && cfg.Model != "" {
 		out = append(out, fmt.Sprintf("unknown model %q in config.json", cfg.Model))
-	} else if _, err := os.Stat(ModelPath(cfg.Model)); err != nil {
-		out = append(out, fmt.Sprintf("the %s model is not downloaded; run `dohra-companion install`", cfg.Model))
+	} else if !Installed(cfg.Model) {
+		out = append(out, "No speech model is installed yet. Choose one in Dohra's Settings.")
 	}
 	if _, err := FindWhisper(); err != nil {
 		out = append(out, err.Error())

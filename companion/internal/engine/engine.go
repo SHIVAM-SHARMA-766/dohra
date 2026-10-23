@@ -28,7 +28,7 @@ import (
 type Config struct {
 	Whisper     string // whisper-cli path
 	Model       string // model file path
-	ModelName   string // "small", "medium"; recorded in each session
+	ModelName   string // "small", "medium", "large"; recorded in each session
 	VAD         string // VAD model path, or empty
 	LiveThreads int    // while any session is recording
 	IdleThreads int    // once none is
@@ -158,6 +158,16 @@ func (e *Engine) Start(id, language string) error {
 	e.sessions[id] = &session{meta: meta, live: true, pending: map[string][]int16{}}
 	e.log.Printf("start %s (language %s, model %s)", id, language, e.cfg.ModelName)
 	return nil
+}
+
+// SetModel switches the model for every chunk not yet transcribed, including
+// those of sessions already in progress. The chunk running now finishes with
+// the old one.
+func (e *Engine) SetModel(name, path string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.cfg.ModelName, e.cfg.Model = name, path
+	e.log.Printf("model is now %s", name)
 }
 
 // Audio appends samples to one stream of a live session.
@@ -328,18 +338,19 @@ func (e *Engine) Work(ctx context.Context) {
 		if e.liveCountLocked() > 0 {
 			threads = e.cfg.LiveThreads
 		}
+		model := e.cfg.Model
 		e.mu.Unlock()
 
-		e.process(ctx, s, j, lang, threads)
+		e.process(ctx, s, j, lang, model, threads)
 	}
 }
 
-func (e *Engine) process(ctx context.Context, s *session, j job, lang string, threads int) {
+func (e *Engine) process(ctx context.Context, s *session, j job, lang, model string, threads int) {
 	samples, err := e.store.Read(j.id, j.stream, j.start, j.end)
 	var res whisper.Result
 	if err == nil && !chunker.Silent(samples) {
 		res, err = e.run(ctx, whisper.Options{
-			Binary: e.cfg.Whisper, Model: e.cfg.Model, VAD: e.cfg.VAD, Language: lang, Threads: threads,
+			Binary: e.cfg.Whisper, Model: model, VAD: e.cfg.VAD, Language: lang, Threads: threads,
 		}, samples)
 	}
 	if ctx.Err() != nil {

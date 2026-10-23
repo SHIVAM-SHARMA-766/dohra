@@ -175,6 +175,8 @@ async function handleRequest(msg: BackgroundRequest): Promise<unknown> {
       return pauseOrResume(msg.type);
     case "companion-status":
       return transcriber.checkCompanion();
+    case "model":
+      return transcriber.manageModel(msg.action, msg.model);
     case "transcribe-start":
       if (!(await transcriber.startSession(msg.sessionId, false))) {
         const info = await transcriber.checkCompanion();
@@ -277,6 +279,13 @@ chrome.runtime.onMessage.addListener((msg: BackgroundRequest | RecorderEvent, _s
     },
   );
   return true;
+});
+
+// First install: walk through setup — microphone, companion, speech model.
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  if (reason === chrome.runtime.OnInstalledReason.INSTALL) {
+    void chrome.tabs.create({ url: chrome.runtime.getURL("setup.html") });
+  }
 });
 
 chrome.commands.onCommand.addListener(async (command, tab) => {

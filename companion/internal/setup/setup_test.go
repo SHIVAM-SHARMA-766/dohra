@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/config"
 )
@@ -125,5 +126,81 @@ func TestHostManifest(t *testing.T) {
 	origins := m["allowed_origins"].([]any)
 	if len(origins) != 1 || origins[0] != "chrome-extension://"+config.ExtensionID+"/" {
 		t.Fatalf("origins %v", origins)
+	}
+}
+
+func TestFetchResumesPartialDownload(t *testing.T) {
+	body := strings.Repeat("0123456789", 1000)
+	sum := sha256.Sum256([]byte(body))
+	var ranges []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ranges = append(ranges, r.Header.Get("Range"))
+		http.ServeContent(w, r, "m.bin", time.Time{}, strings.NewReader(body))
+	}))
+	defer srv.Close()
+	dest := filepath.Join(t.TempDir(), "m.bin")
+	if err := os.WriteFile(dest+".part", []byte(body[:4000]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := config.Asset{URL: srv.URL, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(body))}
+	var first, last int64 = -1, 0
+	err := Fetch(context.Background(), a, dest, func(done int64) {
+		if first < 0 {
+			first = done
+		}
+		last = done
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ranges) != 1 || ranges[0] != "bytes=4000-" {
+		t.Fatalf("requested ranges %q, want one request for bytes=4000-", ranges)
+	}
+	if first != 4000 || last != a.Size {
+		t.Fatalf("progress went %d..%d, want 4000..%d", first, last, a.Size)
+	}
+	if !Verify(dest, a.SHA256) {
+		t.Fatal("resumed file does not verify")
+	}
+	if _, err := os.Stat(dest + ".part"); err == nil {
+		t.Fatal("part file left behind")
+	}
+}
+
+func TestFetchDropsCorruptPart(t *testing.T) {
+	body := strings.Repeat("abcdefghij", 100)
+	sum := sha256.Sum256([]byte(body))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeContent(w, r, "m.bin", time.Time{}, strings.NewReader(body))
+	}))
+	defer srv.Close()
+	dest := filepath.Join(t.TempDir(), "m.bin")
+	_ = os.WriteFile(dest+".part", []byte("garbage!"), 0o644)
+	a := config.Asset{URL: srv.URL, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(body))}
+	if err := Fetch(context.Background(), a, dest, func(int64) {}); err == nil {
+		t.Fatal("corrupt part accepted")
+	}
+	// The bad part is gone, so the retry starts from zero and succeeds.
+	if err := Fetch(context.Background(), a, dest, func(int64) {}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFetchFinishesCompletePart(t *testing.T) {
+	body := "whole model"
+	sum := sha256.Sum256([]byte(body))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("downloaded although the part was complete")
+	}))
+	defer srv.Close()
+	dest := filepath.Join(t.TempDir(), "m.bin")
+	_ = os.WriteFile(dest+".part", []byte(body), 0o644)
+	a := config.Asset{URL: srv.URL, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(body))}
+	if err := Fetch(context.Background(), a, dest, func(int64) {}); err != nil {
+		t.Fatal(err)
+	}
+	if !Verify(dest, a.SHA256) {
+		t.Fatal("not moved into place")
 	}
 }

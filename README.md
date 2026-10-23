@@ -53,38 +53,47 @@ npm ci && npm run build      # then load the dist/ folder as above
 cd companion && go build -o dohra-companion . && ./dohra-companion install
 ```
 
-### The transcription companion (optional)
+### First-run setup
 
-Transcripts are made by `dohra-companion`, a small program that runs
-[whisper.cpp](https://github.com/ggml-org/whisper.cpp) on this computer. The browser
-starts it when needed; nothing is uploaded. Without it, Dohra still records — there is
-just no transcript.
+Installing Dohra opens its **setup page**, which walks through three steps and ticks
+each off by itself:
 
-Download the binary for your platform from [Releases](../../releases) and run
-`install`. It downloads whisper.cpp and the speech model (about 550 MB), checks every
-file against a pinned SHA-256, and registers itself with Chrome, Chromium, Brave and
-Edge:
+1. **Allow the microphone**, so your own questions are recorded too.
+2. **Install the companion**, `dohra-companion`: a small program (about 40 MB with
+   [whisper.cpp](https://github.com/ggml-org/whisper.cpp)) that makes transcripts on
+   this computer. The browser starts it when needed, and nothing is uploaded. The page
+   shows the commands for your system:
 
-```sh
-# Linux (x86-64); on macOS run `brew install whisper-cpp` first and pick the darwin build
-gh release download --repo SHIVAM-SHARMA-766/dohra --pattern dohra-companion-linux-amd64 --output dohra-companion
-chmod +x dohra-companion && ./dohra-companion install
+   ```sh
+   # Linux (x86-64); on macOS run `brew install whisper-cpp` first and pick the darwin build
+   gh release download --repo SHIVAM-SHARMA-766/dohra --pattern dohra-companion-linux-amd64 --output dohra-companion
+   chmod +x dohra-companion && ./dohra-companion install
 
-# Windows (PowerShell)
-gh release download --repo SHIVAM-SHARMA-766/dohra --pattern dohra-companion-windows-amd64.exe --output dohra-companion.exe
-.\dohra-companion.exe install
-```
+   # Windows (PowerShell)
+   gh release download --repo SHIVAM-SHARMA-766/dohra --pattern dohra-companion-windows-amd64.exe --output dohra-companion.exe
+   .\dohra-companion.exe install
+   ```
 
-Then reload Dohra in `chrome://extensions`. The extension's **Companion setup** page
-(linked from the popup) shows the same commands and whether it is ready.
-`dohra-companion status` shows what is installed; `uninstall --purge` removes it all.
+   `install` downloads whisper.cpp and the voice detector, checks every file against a
+   pinned SHA-256, and registers itself with Chrome, Chromium, Brave and Edge.
+3. **Choose a speech model**, downloaded from the page with a progress bar:
 
-The default **medium** model is the accurate one. On a 6-core laptop CPU it runs at
-about real time while the class is on, at low priority so the class never stutters,
-and catches up once it ends. From the benchmark, a one-hour class should be fully
-transcribed roughly 10–15 minutes after it finishes; this has not yet been measured on
-a full class. `install --model small` is about four times faster but makes clearly more
-mistakes, especially with names, technical terms and Hindi.
+   | Model | Download | On a 6-core laptop |
+   |---|---|---|
+   | **Small** | 190 MB | Keeps up with any class; more mistakes, especially in Hindi |
+   | **Medium** | 540 MB | Keeps up; the transcript is ready a few minutes after class |
+   | **High** (large-v3 turbo) | 575 MB | Usually best for Hindi and Hinglish; ready about 15 minutes after an hour-long class |
+
+   The page recommends Medium for computers with 8 or more CPU threads, and Small
+   otherwise.
+
+Models are managed only in Dohra: **Settings → Speech model** downloads more of them,
+switches between installed ones, and removes those not in use. A switch applies to
+everything not transcribed yet, including a class in progress. A download that is
+interrupted continues where it stopped.
+
+Without the companion, Dohra still records, but there is no transcript until it is set
+up. `dohra-companion status` shows what is installed; `dohra-companion uninstall --purge` removes it all.
 
 ## Use
 

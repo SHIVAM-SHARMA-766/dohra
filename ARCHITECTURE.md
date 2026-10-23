@@ -34,13 +34,13 @@ context can change it safely.
 | `src/offscreen/` | The recorder. Captures the tab (and mic), mixes audio, plays the tab back to the speakers, runs `MediaRecorder`, and streams chunks to the storage worker. |
 | `src/worker/` | Storage worker. The only code that writes recording files. |
 | `src/popup/` | Quick start: title, start/pause/stop, live timer, and a summary of what will be recorded. Holds no state of its own. |
-| `src/settings/` | Dohra's settings page: the microphone switch for the popup, and the Downloads copy. |
+| `src/settings/` | Dohra's settings page: the microphone switch for the popup, the Downloads copy, and the speech models. |
 | `src/library/` | Lists, opens, exports and deletes sessions, shows transcript state, and recovers interrupted recordings. |
 | `src/session/` | One recording: player and transcript, seek-on-click, follow, search, script toggle, `.txt` download, and transcribing a recording after the fact. |
-| `src/companion-page/` | Setup instructions for the companion, with a live readiness check. |
+| `src/setup/` | First-run setup, opened on install: microphone, companion install commands with a live check, and the speech-model choice. |
 | `src/permissions/` | One-time microphone grant (see "Microphone" below). |
-| `src/lib/` | Shared code: settings, the session format, messages, storage helpers, the WebM patcher, the transcript format, and Devanagari-to-Roman transliteration. |
-| `companion/` | The transcription companion: native messaging host, chunking, the Whisper queue, crash-safe session store, and the installer. See "Transcription" below. |
+| `src/lib/` | Shared code: settings, the session format, messages, storage helpers, the WebM patcher, the transcript format, Devanagari-to-Roman transliteration, and the speech-model list. |
+| `companion/` | The transcription companion: native messaging host, chunking, the Whisper queue, crash-safe session store, model downloads, and the installer. See "Transcription" below. |
 | `scripts/` | Build (esbuild), packaging, icon rendering, the GStreamer playback check, and the end-to-end test. |
 | `test/` | Unit tests for the extension's pure logic. The companion's tests live beside its code (`go test ./...`). |
 
@@ -188,12 +188,24 @@ a real meeting:
 
 | Model | 3 threads | 6 threads | RAM |
 |---|---|---|---|
-| small (q5_1) | 3.2× real time | 4.9× | 0.6 GB |
-| medium (q5_0) | 1.03× | 1.6× | 1.2 GB |
+| Small: small (q5_1) | 3.2× real time | 4.9× | 0.6 GB |
+| Medium: medium (q5_0) | 1.03× | 1.6× | 1.2 GB |
+| High: large-v3-turbo (q5_0) | 0.76× | 1.21× | 0.9 GB |
+| (not offered) large-v3 (q5_0) | 0.46× | — | 2.1 GB |
 
-- **Medium was chosen** because small got technical terms and names visibly wrong
+High and large-v3 were measured on a 2-minute part of the same meeting, where medium
+ran at 0.94× with 3 threads.
+
+- **Medium is the default recommendation** because small got technical terms and names visibly wrong
   ("set two and three, info" for "SEV 2 and 3, infra"). Greedy decoding instead of beam
   search bought 15% speed and brought the same errors back, so beam search stays.
+- **High is large-v3-turbo, not large-v3.** Full large-v3 is too slow to finish an
+  hour-long class in reasonable time (0.46×), needs 2 GB of RAM, and on the sample fell
+  into a loop repeating one line. Turbo keeps large-v3's encoder with a 4-layer
+  decoder: twice as fast, less memory. On this English sample it was not better than
+  medium ("save two and three info infra", without punctuation). Its expected gain is
+  in Hindi, which has not been measured yet. With it, a one-hour class finishes about
+  15 minutes after it ends.
 - **Chunks are about 2 minutes.** Whisper encodes 30-second windows and re-encodes from
   the last complete line at the end of every run, so each run pays about one extra
   window. Measured: a 28-second chunk ran at 0.7× real time, 2 minutes at 1.0×.
@@ -246,15 +258,48 @@ fire-and-forget; an error with it comes back as an `error` event.
 
 | Request | Effect |
 |---|---|
-| `hello` | Version, readiness, and any problems ("model not downloaded") |
+| `hello` | Version, readiness, problems ("no speech model installed"), CPU count, and every model's state |
 | `start {sessionId, language}` | Begin a session, or rejoin one still receiving. Starting a finished one replaces its transcript. |
 | `audio {sessionId, stream, pcm}` | Append base64 16 kHz int16 samples to a stream |
 | `stop {sessionId}` | No more audio; queue the remainder |
 | `status` | Every unfinished session's progress |
 | `transcript {sessionId, from}` | Up to 500 committed lines from index `from` |
+| `models` | The model list, as in `hello` |
+| `model-install {model}` | Start downloading a model in the background; replies at once |
+| `model-cancel {model}` | Stop a download, keeping what arrived |
+| `model-use {model}` | Make an installed model the active one |
+| `model-remove {model}` | Delete a model that is not active |
 
-Events: `progress {receivedMs, doneMs, queued}`, `lines`, and
-`done {state: complete|failed, error}`.
+The model requests all reply with a fresh `hello`.
+
+Events: `progress {receivedMs, doneMs, queued}`, `lines`,
+`done {state: complete|failed, error}`, and for downloads
+`model-progress {model, done, size}` (at most four a second) and
+`model-done {model, error}`.
+
+### Speech models
+
+Speech models are chosen **only in Dohra**: on the setup page during first install,
+and afterwards in Settings. Both use the same list
+([src/lib/model-picker.ts](src/lib/model-picker.ts)), which offers download,
+progress, cancel, **Use this model** and **Remove**. `dohra-companion install` sets up
+everything except a model. Its `--model` flag is for scripted installs and tests.
+
+- The companion runs without a model; `hello` then reports not ready. When a download
+  finishes and no usable model is active, the new one becomes active and the engine
+  starts in the running process, so setup needs no restart.
+- Downloads run in the companion ([companion/internal/models](companion/internal/models)).
+  The companion exits when Chrome disconnects, so the background keeps the native port
+  open while any download runs, just as it does for unfinished transcripts.
+- A download that stops is kept as `<model>.part`. The next attempt hashes the part,
+  asks the server only for the rest (`Range`), and verifies the SHA-256 of the whole.
+  A part that fails verification is deleted.
+- Switching applies to every chunk not yet transcribed, including those of a class in
+  progress. The chunk running at that moment finishes with the old model. The active
+  model cannot be removed.
+- If the active model's file disappears, the companion falls back to another
+  installed model.
+- The page recommends **Medium** on 8 or more logical CPUs and **Small** below that.
 
 ### Surviving crashes and closed browsers
 
@@ -286,7 +331,9 @@ session page, which offers **Try again**.
 `%LOCALAPPDATA%\Dohra`; `DOHRA_HOME` overrides). It then downloads:
 
 - a pinned whisper.cpp build (`b5454`);
-- the chosen model and the Silero VAD model.
+- the Silero VAD model.
+
+It downloads no speech model; see [Speech models](#speech-models).
 
 Each download is checked against a SHA-256 in
 [companion/internal/config](companion/internal/config). Archive entries that would

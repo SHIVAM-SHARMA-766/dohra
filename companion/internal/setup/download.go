@@ -32,70 +32,119 @@ func Verify(path, sha string) bool {
 	return hex.EncodeToString(h.Sum(nil)) == sha
 }
 
-// Download fetches an asset to dest, checking its hash before moving it into
-// place. An already-correct file is left alone.
+// Download fetches an asset to dest, printing progress. An already-correct
+// file is left alone.
 func Download(ctx context.Context, a config.Asset, dest string, out io.Writer) error {
 	if Verify(dest, a.SHA256) {
 		fmt.Fprintf(out, "  %s already present\n", filepath.Base(dest))
 		return nil
 	}
+	name := filepath.Base(dest)
+	var last time.Time
+	err := Fetch(ctx, a, dest, func(done int64) {
+		if time.Since(last) > 500*time.Millisecond {
+			last = time.Now()
+			fmt.Fprintf(out, "\r  %s  %3.0f%%  (%d / %d MB)", name, 100*float64(done)/float64(max(a.Size, 1)), done>>20, a.Size>>20)
+		}
+	})
+	if err == nil {
+		fmt.Fprintf(out, "\r  %s  done (%d MB)%s\n", name, a.Size>>20, strings.Repeat(" ", 20))
+	}
+	return err
+}
+
+// Fetch downloads an asset to dest, calling report with the bytes so far, and
+// checks its hash before moving it into place. An interrupted download is kept
+// as dest.part and continued from where it stopped; a part that turns out
+// corrupt is deleted, so the next attempt starts over.
+func Fetch(ctx context.Context, a config.Asset, dest string, report func(done int64)) error {
+	if Verify(dest, a.SHA256) {
+		report(a.Size)
+		return nil
+	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
+	}
+	part := dest + ".part"
+	f, err := os.OpenFile(part, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// Hash what is already there, then ask only for the rest.
+	h := sha256.New()
+	have, err := io.Copy(h, f)
+	if err != nil {
+		return err
+	}
+	if have == a.Size && hex.EncodeToString(h.Sum(nil)) == a.SHA256 {
+		// Complete, but stopped before the rename.
+		report(have)
+		if err := f.Close(); err != nil {
+			return err
+		}
+		return os.Rename(part, dest)
+	}
+	if have >= a.Size {
+		have = 0
+		h.Reset()
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.URL, nil)
 	if err != nil {
 		return err
+	}
+	if have > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", have))
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	switch {
+	case resp.StatusCode == http.StatusPartialContent && have > 0:
+	case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusRequestedRangeNotSatisfiable:
+		// The server sent the whole file (or the part is unusable): start over.
+		if resp.StatusCode != http.StatusOK {
+			_ = os.Remove(part)
+			return fmt.Errorf("download %s: %s; try again", a.URL, resp.Status)
+		}
+		have = 0
+		h.Reset()
+		if err := f.Truncate(0); err != nil {
+			return err
+		}
+	default:
 		return fmt.Errorf("download %s: %s", a.URL, resp.Status)
 	}
-
-	part := dest + ".part"
-	f, err := os.Create(part)
-	if err != nil {
+	if _, err := f.Seek(have, io.SeekStart); err != nil {
 		return err
 	}
-	defer os.Remove(part)
-	h := sha256.New()
-	pw := &progress{name: filepath.Base(dest), total: a.Size, out: out}
-	if _, err := io.Copy(io.MultiWriter(f, h, pw), resp.Body); err != nil {
-		f.Close()
+	report(have)
+	cw := &counter{done: have, report: report}
+	if _, err := io.Copy(io.MultiWriter(f, h, cw), resp.Body); err != nil {
 		return err
 	}
-	pw.finish()
 	if err := f.Close(); err != nil {
 		return err
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); got != a.SHA256 {
+		_ = os.Remove(part)
 		return fmt.Errorf("%s: checksum mismatch (got %s, want %s)", a.URL, got, a.SHA256)
 	}
 	return os.Rename(part, dest)
 }
 
-type progress struct {
-	name  string
-	total int64
-	done  int64
-	last  time.Time
-	out   io.Writer
+type counter struct {
+	done   int64
+	report func(int64)
 }
 
-func (p *progress) Write(b []byte) (int, error) {
-	p.done += int64(len(b))
-	if time.Since(p.last) > 500*time.Millisecond {
-		p.last = time.Now()
-		fmt.Fprintf(p.out, "\r  %s  %3.0f%%  (%d / %d MB)", p.name, 100*float64(p.done)/float64(max(p.total, 1)), p.done>>20, p.total>>20)
-	}
+func (c *counter) Write(b []byte) (int, error) {
+	c.done += int64(len(b))
+	c.report(c.done)
 	return len(b), nil
-}
-
-func (p *progress) finish() {
-	fmt.Fprintf(p.out, "\r  %s  done (%d MB)%s\n", p.name, p.done>>20, strings.Repeat(" ", 20))
 }
 
 func within(dir, p string) bool {

@@ -3,7 +3,7 @@
 // The browser starts it through native messaging (it is passed the extension's
 // origin as its first argument); everything else is a command run by hand:
 //
-//	dohra-companion install [--model medium|small|both]
+//	dohra-companion install
 //	dohra-companion status
 //	dohra-companion bench <file.wav>
 //	dohra-companion uninstall [--purge]
@@ -25,6 +25,7 @@ import (
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/config"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/engine"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/host"
+	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/models"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/nm"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/paths"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/setup"
@@ -75,8 +76,8 @@ func main() {
 func usage() {
 	fmt.Print(`dohra-companion — local transcription for Dohra
 
-  install [--model medium|small|both] [--no-register]
-                                        download whisper.cpp and models, register with the browser
+  install [--no-register]               download whisper.cpp, register with the browser;
+                                        speech models are then chosen in Dohra
   status                                show what is installed and what is in progress
   bench <file.wav>                      time the configured model on a 16 kHz WAV
   uninstall [--purge]                   unregister; --purge also deletes all downloaded files
@@ -86,12 +87,13 @@ func usage() {
 
 func install(args []string) error {
 	fs := flag.NewFlagSet("install", flag.ExitOnError)
-	model := fs.String("model", "medium", "medium, small, or both")
+	// Models are normally chosen in Dohra's setup; this is for scripted installs and tests.
+	model := fs.String("model", "", "also download this model now and make it active")
 	noRegister := fs.Bool("no-register", false, "do not register with installed browsers")
 	_ = fs.Parse(args)
-	models := []string{*model}
-	if *model == "both" {
-		models = []string{"medium", "small"}
+	var models []string
+	if *model != "" {
+		models = []string{*model}
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -122,6 +124,11 @@ func status() error {
 	}
 	if p, err := config.FindWhisper(); err == nil {
 		fmt.Printf("whisper     %s\n", p)
+	}
+	for _, name := range config.ModelNames {
+		if config.Installed(name) {
+			fmt.Printf("installed   %s (%s)\n", name, config.Models[name].Label)
+		}
 	}
 	problems := config.Problems(cfg)
 	if len(problems) == 0 {
@@ -184,44 +191,54 @@ func serve() error {
 	logger := log.New(logFile, "", log.LstdFlags)
 	logger.Printf("started %s (args %q)", version, os.Args[1:])
 
-	cfg, cfgErr := config.Load()
-	problems := config.Problems(cfg)
-	if cfgErr != nil {
-		problems = append(problems, cfgErr.Error())
-	}
 	out := nm.NewWriter(os.Stdout)
-	h := &host.Host{
-		Hello: host.Hello{Version: version, Ready: len(problems) == 0, Problems: problems, Model: cfg.Model, Language: cfg.Language},
-		Out:   out,
-		Log:   logger,
+	emit := func(v any) {
+		if err := out.Send(v); err != nil {
+			logger.Printf("send: %v", err)
+		}
 	}
+	h := &host.Host{
+		Version: version,
+		Out:     out,
+		Log:     logger,
+		State: func() (config.Config, []string) {
+			cfg, err := config.Load()
+			problems := config.Problems(cfg)
+			if err != nil {
+				problems = append(problems, err.Error())
+			}
+			return cfg, problems
+		},
+		SaveModel: func(name string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+			cfg.Model = name
+			return config.Save(cfg)
+		},
+		StartEngine: func(ctx context.Context, cfg config.Config) *engine.Engine {
+			bin, _ := config.FindWhisper()
+			vad := config.VADPath()
+			if _, err := os.Stat(vad); err != nil {
+				vad = ""
+			}
+			e := engine.New(engine.Config{
+				Whisper: bin, Model: config.ModelPath(cfg.Model), ModelName: cfg.Model, VAD: vad,
+				LiveThreads: cfg.LiveThreads, IdleThreads: cfg.IdleThreads,
+			}, store.New(paths.SessionsDir()), emit, whisper.Run, logger)
+			if err := e.Resume(); err != nil {
+				logger.Printf("resume: %v", err)
+			}
+			go e.Work(ctx)
+			logger.Printf("engine started with the %s model", cfg.Model)
+			return e
+		},
+	}
+	h.Models = models.New(setup.Fetch, emit, h.ModelInstalled)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if h.Hello.Ready {
-		bin, _ := config.FindWhisper()
-		vad := config.VADPath()
-		if _, err := os.Stat(vad); err != nil {
-			vad = ""
-		}
-		emit := func(v any) {
-			if err := out.Send(v); err != nil {
-				logger.Printf("send: %v", err)
-			}
-		}
-		e := engine.New(engine.Config{
-			Whisper: bin, Model: config.ModelPath(cfg.Model), ModelName: cfg.Model, VAD: vad,
-			LiveThreads: cfg.LiveThreads, IdleThreads: cfg.IdleThreads,
-		}, store.New(paths.SessionsDir()), emit, whisper.Run, logger)
-		if err := e.Resume(); err != nil {
-			logger.Printf("resume: %v", err)
-		}
-		go e.Work(ctx)
-		h.Engine = e
-	} else {
-		logger.Printf("not ready: %v", problems)
-	}
-
 	err = h.Serve(ctx, os.Stdin)
 	logger.Printf("disconnected: %v", err)
 	return err

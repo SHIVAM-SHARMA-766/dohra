@@ -1,10 +1,10 @@
-// Quick start: one click records the current tab — audio and video at the screen's
-// resolution, the microphone, and a transcript. The only choices here are the title,
+// Quick start: one click records the current tab — audio and video at the best
+// quality the screen allows, the microphone, and a transcript. The only choices here are the title,
 // the Downloads copy, and (if enabled on the Settings page) the microphone.
 
 import { ACTIVE_KEY, LAST_ERROR_KEY, liveDuration, type ActiveRecording, type BackgroundRequest, type Reply } from "../lib/messages";
 import { formatBytes, formatDuration } from "../lib/session";
-import { estimateBytesPerHour, loadSettings, micEnabled, saveSettings, screenResolution, type Settings } from "../lib/settings";
+import { loadSettings, micEnabled, saveSettings, type Settings } from "../lib/settings";
 import { TRANSCRIPTS_KEY, type CompanionInfo, type TranscriptStatus } from "../lib/transcript";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -52,11 +52,8 @@ async function micGranted(): Promise<boolean> {
 
 /** Shows what will be recorded, and blocks Start while the microphone is needed but not allowed. */
 async function renderSummary(): Promise<void> {
-  const { width, height } = screenResolution();
   const mic = micEnabled(settings);
-  const parts = [`Audio + video at ${width}×${height}`, ...(mic ? ["microphone"] : []), "transcript"];
-  $<HTMLElement>("summary").textContent =
-    `${parts.join(" · ")}. About ${formatBytes(estimateBytesPerHour(width, height))} per hour.`;
+  $<HTMLElement>("summary").textContent = ["Audio + video", ...(mic ? ["microphone"] : []), "transcript"].join(" · ");
 
   const blocked = mic && !(await micGranted());
   $<HTMLElement>("mic-help").hidden = !blocked;
@@ -82,16 +79,17 @@ async function showCompanion(): Promise<void> {
   }
   el.dataset.ready = String(info.ready);
   if (info.ready) {
-    el.textContent = `Transcript by the companion · ${info.model} model`;
+    const model = info.models.find((m) => m.active)?.label ?? info.model;
+    el.textContent = `Transcript with the ${model} speech model`;
     return;
   }
   el.textContent = `No transcript for now: ${info.problems[0] ?? "the companion is not ready."} `;
   const link = document.createElement("a");
   link.href = "#";
-  link.textContent = "Set up the companion";
+  link.textContent = "Finish setup";
   link.addEventListener("click", (e) => {
     e.preventDefault();
-    openPage("companion.html");
+    openPage("setup.html");
   });
   el.append(link);
 }
