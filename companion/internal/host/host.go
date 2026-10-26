@@ -130,7 +130,7 @@ func (h *Host) UseModel(name string) error {
 		return err
 	}
 	if e := h.Engine(); e != nil {
-		e.SetModel(name, config.ModelPath(name))
+		e.SetModel(name, config.ModelPath(name), config.Models[name].NativeHinglish)
 	}
 	cfg, problems := h.State()
 	if len(problems) == 0 {

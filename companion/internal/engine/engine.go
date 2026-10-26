@@ -26,13 +26,15 @@ import (
 )
 
 type Config struct {
-	Whisper     string // whisper-cli path
-	Model       string // model file path
-	ModelName   string // "small", "medium", "large"; recorded in each session
-	VAD         string // VAD model path, or empty
-	LiveThreads int    // while any session is recording
-	IdleThreads int    // once none is
-	Chunk       chunker.Params
+	Whisper   string // whisper-cli path
+	Model     string // model file path
+	ModelName string // "small", "medium", "large"; recorded in each session
+	// NativeHinglish: the model writes Roman Hinglish itself (see whisper.Options).
+	NativeHinglish bool
+	VAD            string // VAD model path, or empty
+	LiveThreads    int    // while any session is recording
+	IdleThreads    int    // once none is
+	Chunk          chunker.Params
 }
 
 // Runner transcribes one chunk; whisper.Run in production, a fake in tests.
@@ -163,10 +165,10 @@ func (e *Engine) Start(id, language string) error {
 // SetModel switches the model for every chunk not yet transcribed, including
 // those of sessions already in progress. The chunk running now finishes with
 // the old one.
-func (e *Engine) SetModel(name, path string) {
+func (e *Engine) SetModel(name, path string, nativeHinglish bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.cfg.ModelName, e.cfg.Model = name, path
+	e.cfg.ModelName, e.cfg.Model, e.cfg.NativeHinglish = name, path, nativeHinglish
 	e.log.Printf("model is now %s", name)
 }
 
@@ -338,19 +340,20 @@ func (e *Engine) Work(ctx context.Context) {
 		if e.liveCountLocked() > 0 {
 			threads = e.cfg.LiveThreads
 		}
-		model := e.cfg.Model
+		model, native := e.cfg.Model, e.cfg.NativeHinglish
 		e.mu.Unlock()
 
-		e.process(ctx, s, j, lang, model, threads)
+		e.process(ctx, s, j, lang, model, native, threads)
 	}
 }
 
-func (e *Engine) process(ctx context.Context, s *session, j job, lang, model string, threads int) {
+func (e *Engine) process(ctx context.Context, s *session, j job, lang, model string, native bool, threads int) {
 	samples, err := e.store.Read(j.id, j.stream, j.start, j.end)
 	var res whisper.Result
 	if err == nil && !chunker.Silent(samples) {
 		res, err = e.run(ctx, whisper.Options{
 			Binary: e.cfg.Whisper, Model: model, VAD: e.cfg.VAD, Language: lang, Threads: threads,
+			NativeHinglish: native,
 		}, samples)
 	}
 	if ctx.Err() != nil {

@@ -225,7 +225,8 @@ func serve() error {
 			}
 			e := engine.New(engine.Config{
 				Whisper: bin, Model: config.ModelPath(cfg.Model), ModelName: cfg.Model, VAD: vad,
-				LiveThreads: cfg.LiveThreads, IdleThreads: cfg.IdleThreads,
+				NativeHinglish: config.Models[cfg.Model].NativeHinglish,
+				LiveThreads:    cfg.LiveThreads, IdleThreads: cfg.IdleThreads,
 			}, store.New(paths.SessionsDir()), emit, whisper.Run, logger)
 			if err := e.Resume(); err != nil {
 				logger.Printf("resume: %v", err)
@@ -236,6 +237,7 @@ func serve() error {
 		},
 	}
 	h.Models = models.New(setup.Fetch, emit, h.ModelInstalled)
+	config.RemoveRetired()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

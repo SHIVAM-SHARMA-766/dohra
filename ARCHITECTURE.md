@@ -190,16 +190,30 @@ a real meeting:
 |---|---|---|---|
 | Small: small (q5_1) | 3.2× real time | 4.9× | 0.6 GB |
 | Medium: medium (q5_0) | 1.03× | 1.6× | 1.2 GB |
-| High: large-v3-turbo (q5_0) | 0.76× | 1.21× | 0.9 GB |
+| High: Hindi2Hinglish Apex (q5_0) | 0.76× | 1.09× | 0.8 GB |
+| (replaced) large-v3-turbo (q5_0) | 0.76× | 1.21× | 0.9 GB |
 | (not offered) large-v3 (q5_0) | 0.46× | — | 2.1 GB |
 
-High and large-v3 were measured on a 2-minute part of the same meeting, where medium
-ran at 0.94× with 3 threads.
+The last three were measured on a 2-minute part of the same meeting, where medium ran
+at 0.94× with 3 threads. With VAD skipping silence, High transcribed the whole 51-minute
+meeting in 36 minutes at 6 threads.
 
 - **Medium is the default recommendation** because small got technical terms and names visibly wrong
   ("set two and three, info" for "SEV 2 and 3, infra"). Greedy decoding instead of beam
   search bought 15% speed and brought the same errors back, so beam search stays.
-- **High is large-v3-turbo, not large-v3.** Full large-v3 is too slow to finish an
+- **High is Oriserve's Hindi2Hinglish Apex.** It is large-v3-turbo fine-tuned on about
+  700 hours of noisy, Indian-accented Hindi, and it writes Roman Hinglish by itself.
+  On six real recordings with known text (from its model card), plain models failed:
+  turbo wrote "Uh-huh. They can't." for "Haan haan, dekhe hain", and medium wrote
+  "Lenga saathu chaiji". Apex got four exactly right and two nearly. It was also
+  right on the Hinglish and Hindi clips and on English, at turbo's speed. It runs with
+  `-l en` and no prompt; `-l hi` turned English speech into a loop of Devanagari
+  letters. It emits one segment per 30-second window, so `-ml 100 -sow` splits lines
+  at words using token timestamps. No ready-made trustworthy whisper.cpp build
+  existed, so [companion/tools/convert-hf-whisper.py](companion/tools/convert-hf-whisper.py)
+  converts the official safetensors with numpy alone. The q5_0 result is a release
+  asset in the public `SHIVAM-SHARMA-766/dohra-models` repository, pinned by SHA-256.
+- **Before Apex, High was large-v3-turbo, not large-v3.** Full large-v3 is too slow to finish an
   hour-long class in reasonable time (0.46×), needs 2 GB of RAM, and on the sample fell
   into a loop repeating one line. Turbo keeps large-v3's encoder with a 4-layer
   decoder: twice as fast, less memory. On this English sample it was not better than
@@ -487,7 +501,8 @@ These need a manual check.
 - Without headphones, the microphone also records the class from the speakers. Echo
   cancellation reduces this but does not remove it. The transcript then repeats
   "Them" lines as "Me".
-- Hinglish depends on a prompt steering Whisper, not on a trained mode. Its spelling
+- With Small and Medium, Hinglish depends on a prompt steering Whisper, not on a
+  trained mode (High is trained for it). Its spelling
   varies ("padhenge"/"parhenge"), and a long pure-English stretch may still drift.
   Transcripts made before 0.4 are in Devanagari; the session page's Roman view
   converts them.

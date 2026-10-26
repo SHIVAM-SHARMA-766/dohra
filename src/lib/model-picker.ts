@@ -12,7 +12,7 @@ export const MODEL_TEXT: Record<string, string> = {
   medium:
     "Balanced. Keeps up during class on a 6-core laptop; on slower ones the transcript finishes a little after the class.",
   large:
-    "The biggest model (Whisper large-v3 turbo), usually the best at Hindi and Hinglish. Slower: on a 6-core laptop the transcript finishes about 15 minutes after an hour-long class.",
+    "Best for Hindi and Hinglish: Whisper trained on 700 hours of Indian Hindi (Oriserve Hindi2Hinglish). Slower: on a 6-core laptop the transcript finishes about 15 minutes after an hour-long class.",
 };
 
 /** The model to suggest for a computer with this many logical CPUs. */

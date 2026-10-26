@@ -22,7 +22,12 @@ type Options struct {
 	Model    string // path to a ggml model
 	VAD      string // path to the Silero VAD model; empty disables VAD
 	Language string // "hinglish", "auto", "en", "hi", ...
-	Threads  int
+	// NativeHinglish marks a model fine-tuned to write Roman Hinglish by itself
+	// (Oriserve's Hindi2Hinglish): "hinglish" then runs it as English, without the
+	// steering prompt. Told "hi", it turned English speech into a loop of Devanagari
+	// letters; with "en" it handled English, Hindi and the mix alike.
+	NativeHinglish bool
+	Threads        int
 }
 
 // Hinglish is written in Roman script, the way it is typed: Hindi as
@@ -62,8 +67,13 @@ func Run(ctx context.Context, opts Options, samples []int16) (Result, error) {
 	}
 	base := filepath.Join(dir, "out")
 	lang := opts.Language
+	prompt := ""
 	if lang == Hinglish {
 		lang = "en"
+		prompt = HinglishPrompt
+		if opts.NativeHinglish {
+			prompt = ""
+		}
 	}
 	args := []string{
 		"-m", opts.Model,
@@ -73,8 +83,13 @@ func Run(ctx context.Context, opts Options, samples []int16) (Result, error) {
 		"-oj", "-of", base,
 		"-np",
 	}
-	if opts.Language == Hinglish {
-		args = append(args, "--prompt", HinglishPrompt)
+	if prompt != "" {
+		args = append(args, "--prompt", prompt)
+	}
+	if opts.Language == Hinglish && opts.NativeHinglish {
+		// The fine-tune emits one segment per 30-second window; split it into
+		// lines of about 100 characters at word boundaries, using token timestamps.
+		args = append(args, "-ml", "100", "-sow")
 	}
 	if opts.VAD != "" {
 		args = append(args, "--vad", "-vm", opts.VAD)

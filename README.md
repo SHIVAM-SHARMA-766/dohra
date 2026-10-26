@@ -82,7 +82,7 @@ each off by itself:
    |---|---|---|
    | **Small** | 190 MB | Keeps up with any class; more mistakes, especially in Hindi |
    | **Medium** | 540 MB | Keeps up; the transcript is ready a few minutes after class |
-   | **High** (large-v3 turbo) | 575 MB | Usually best for Hindi and Hinglish; ready about 15 minutes after an hour-long class |
+   | **High** (Hindi2Hinglish) | 575 MB | Clearly best for Hindi and Hinglish; ready about 15 minutes after an hour-long class |
 
    The page recommends Medium for computers with 8 or more CPU threads, and Small
    otherwise.

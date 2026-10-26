@@ -85,6 +85,8 @@ type Model struct {
 	File  string
 	Label string // what Dohra shows: Small, Medium, High
 	Asset
+	// NativeHinglish: fine-tuned to write Roman Hinglish itself, so it needs no prompt.
+	NativeHinglish bool
 }
 
 // ModelNames lists the models from fastest to most accurate.
@@ -94,16 +96,28 @@ var ModelNames = []string{"small", "medium", "large"}
 var Models = map[string]Model{
 	"small": {"ggml-small-q5_1.bin", "Small", Asset{
 		"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
-		"ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb", 190085487}},
+		"ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb", 190085487}, false},
 	"medium": {"ggml-medium-q5_0.bin", "Medium", Asset{
 		"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin",
-		"19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f", 539212467}},
-	// large-v3-turbo: large-v3's encoder with a 4-layer decoder. On a 2-minute meeting
-	// sample it was as accurate as full large-v3 (which fell into a repetition loop),
-	// at twice its speed and half its memory (0.9 GB against 2.1 GB).
-	"large": {"ggml-large-v3-turbo-q5_0.bin", "High", Asset{
-		"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
-		"394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", 574041195}},
+		"19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f", 539212467}, false},
+	// Oriserve's Hindi2Hinglish Apex: large-v3-turbo fine-tuned on ~700 hours of noisy
+	// Indian-accented Hindi to write Roman Hinglish. Converted and quantized for
+	// whisper.cpp in SHIVAM-SHARMA-766/dohra-models, whose README says how. Same speed
+	// as plain turbo, and far better on real Hindi speech ("Haan haan, dekhe hain"
+	// where turbo heard "Uh-huh. They can't.").
+	"large": {"ggml-hindi2hinglish-apex-q5_0.bin", "High", Asset{
+		"https://github.com/SHIVAM-SHARMA-766/dohra-models/releases/download/hindi2hinglish-apex-v1/ggml-hindi2hinglish-apex-q5_0.bin",
+		"676c257cd9eaf065328e9432cb2bd8465146920f4e4e6783743c0562b61d5104", 574041195}, true},
+}
+
+// Retired lists model files earlier versions installed and nothing uses now.
+var Retired = []string{"ggml-large-v3-turbo-q5_0.bin"}
+
+// RemoveRetired deletes retired model files, freeing their space.
+func RemoveRetired() {
+	for _, name := range Retired {
+		_ = os.Remove(filepath.Join(paths.ModelsDir(), name))
+	}
 }
 
 // VAD lets Whisper skip non-speech, where it otherwise tends to invent text.
