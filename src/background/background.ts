@@ -11,10 +11,13 @@ import {
   type ActiveRecording,
   type BackgroundRequest,
   type ExportFile,
+  micMuted,
+  type MicState,
   type OffscreenRequest,
   type RecorderEvent,
   type Reply,
 } from "../lib/messages";
+import { isMeetingHost } from "../lib/meeting-mic";
 import { sessionId, type SessionMeta } from "../lib/session";
 import { loadSettings, micEnabled } from "../lib/settings";
 import * as transcriber from "./transcriber";
@@ -99,6 +102,7 @@ async function start(tabId: number, title: string): Promise<void> {
 
   const name = title.trim() || tab.title || "Session";
   const id = sessionId(name, new Date());
+  const mic = micEnabled(settings);
   await setLastError(null);
   await setActive({
     sessionId: id,
@@ -107,7 +111,9 @@ async function start(tabId: number, title: string): Promise<void> {
     mode: "video",
     status: "starting",
     progress: { durationMs: 0, bytes: 0, paused: false, at: Date.now() },
+    mic: { recorded: mic, meeting: null, manual: false },
   });
+  if (mic) await watchMeetingMic(tab);
 
   // Every recording is transcribed. If the companion cannot take it, the class is
   // still recorded — losing it would be worse — and the transcript can be made later
@@ -133,17 +139,59 @@ async function start(tabId: number, title: string): Promise<void> {
         sessionId: id,
         title: name,
         source: { url: tab.url ?? "", title: tab.title ?? "" },
-        mic: micEnabled(settings),
+        mic,
+        micMuted: micMuted((await getActive())?.mic),
         recorder: `dohra-extension/${chrome.runtime.getManifest().version}`,
         transcribe,
       },
     });
     await patchActive({ status: "recording" });
+    // A mute that changed while the recorder was starting.
+    const now = await getActive();
+    if (mic && now) await toOffscreen({ target: "offscreen", type: "mic-mute", muted: micMuted(now.mic) }).catch(() => {});
   } catch (e) {
     if (transcribe) await transcriber.stopSession(id).catch(() => {});
     await setActive(null);
     await closeOffscreen();
     throw e;
+  }
+}
+
+// ---- microphone mute ----------------------------------------------------------------
+
+const MEETING_MIC_WAIT_MS = 800;
+
+/**
+ * On a meeting site, starts reading the meeting's own mic button in the tab and
+ * waits briefly for its first report, so a recording begun while muted starts muted.
+ * Uses the access the user's click granted (activeTab), so no site permissions.
+ */
+async function watchMeetingMic(tab: chrome.tabs.Tab): Promise<void> {
+  let host = "";
+  try {
+    host = new URL(tab.url ?? "").hostname;
+  } catch {}
+  if (tab.id === undefined || !isMeetingHost(host)) return;
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["meeting-mic.js"] });
+  } catch {
+    return; // the recording goes on, following only Dohra's own mute
+  }
+  const until = Date.now() + MEETING_MIC_WAIT_MS;
+  while (Date.now() < until && (await getActive())?.mic?.meeting === null) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+/** Records a change in what mutes the microphone and tells the recorder if that changes the result. */
+async function updateMic(patch: Partial<MicState>, fromTab?: number): Promise<void> {
+  const active = await getActive();
+  if (!active?.mic?.recorded) return;
+  if (fromTab !== undefined && fromTab !== active.tabId) return;
+  const mic = { ...active.mic, ...patch };
+  await patchActive({ mic });
+  if (micMuted(mic) !== micMuted(active.mic) && active.status !== "starting") {
+    await toOffscreen({ target: "offscreen", type: "mic-mute", muted: micMuted(mic) }).catch(() => {});
   }
 }
 
@@ -164,7 +212,7 @@ async function pauseOrResume(type: "pause" | "resume"): Promise<void> {
   await toOffscreen({ target: "offscreen", type });
 }
 
-async function handleRequest(msg: BackgroundRequest): Promise<unknown> {
+async function handleRequest(msg: BackgroundRequest, sender: chrome.runtime.MessageSender): Promise<unknown> {
   switch (msg.type) {
     case "start":
       return start(msg.tabId, msg.title);
@@ -173,6 +221,10 @@ async function handleRequest(msg: BackgroundRequest): Promise<unknown> {
     case "pause":
     case "resume":
       return pauseOrResume(msg.type);
+    case "mic-manual":
+      return updateMic({ manual: msg.muted });
+    case "meeting-mic":
+      return updateMic({ meeting: msg.muted }, sender.tab?.id ?? -1);
     case "companion-status":
       return transcriber.checkCompanion();
     case "model":
@@ -265,11 +317,11 @@ async function handleRecorderEvent(event: RecorderEvent): Promise<void> {
 
 // ---- wiring -------------------------------------------------------------------------
 
-chrome.runtime.onMessage.addListener((msg: BackgroundRequest | RecorderEvent, _sender, sendResponse: (r: Reply) => void) => {
+chrome.runtime.onMessage.addListener((msg: BackgroundRequest | RecorderEvent, sender, sendResponse: (r: Reply) => void) => {
   if (msg?.target !== "background") return false;
   const work = msg.type.startsWith("recorder-")
     ? handleRecorderEvent(msg as RecorderEvent)
-    : handleRequest(msg as BackgroundRequest);
+    : handleRequest(msg as BackgroundRequest, sender);
   work.then(
     (data) => sendResponse({ ok: true, data }),
     async (e) => {

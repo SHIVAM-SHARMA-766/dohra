@@ -38,6 +38,8 @@ interface Recording {
   tap: Tap | null;
   /** Tapped audio is dropped while paused, keeping it aligned with the recording. */
   tapPaused: boolean;
+  /** Gates the microphone for both the recording and the transcript; 0 while muted. */
+  micGate: GainNode | null;
 }
 
 let current: Recording | null = null;
@@ -109,10 +111,20 @@ async function start(streamId: string, options: StartOptions): Promise<void> {
     const tabAudio = audio.createMediaStreamSource(tab);
     tabAudio.connect(audio.destination);
     tabAudio.connect(mix);
+    // The microphone goes through a gate, so muting (in the meeting or in Dohra)
+    // silences it in the recording and the transcript alike. Recorded, not played back.
+    let micGate: GainNode | null = null;
+    let gatedMic: MediaStream | undefined;
     if (options.mic) {
       const mic = await captureMic();
       streams.push(mic);
-      audio.createMediaStreamSource(mic).connect(mix); // recorded, not played back
+      micGate = audio.createGain();
+      micGate.gain.value = options.micMuted ? 0 : 1;
+      audio.createMediaStreamSource(mic).connect(micGate);
+      micGate.connect(mix);
+      const tapOut = audio.createMediaStreamDestination();
+      micGate.connect(tapOut);
+      gatedMic = tapOut.stream;
     }
 
     const track = tab.getVideoTracks()[0];
@@ -151,7 +163,7 @@ async function start(streamId: string, options: StartOptions): Promise<void> {
     const storage = new StorageWorker();
     await storage.call({ op: "open", meta });
 
-    const micStream = options.mic ? streams[1] : undefined;
+    const micStream = gatedMic;
 
     const r: Recording = {
       options,
@@ -167,6 +179,7 @@ async function start(streamId: string, options: StartOptions): Promise<void> {
       writeError: null,
       tap: null,
       tapPaused: false,
+      micGate,
     };
     current = r;
 
@@ -309,6 +322,12 @@ async function handle(msg: OffscreenRequest): Promise<void> {
     case "stop":
       // Replies once capture has stopped; finalizing continues and reports by message.
       void stop("user");
+      return;
+    case "mic-mute":
+      if (current?.micGate) {
+        // A short ramp instead of a step, so the cut does not click.
+        current.micGate.gain.setTargetAtTime(msg.muted ? 0 : 1, current.audio.currentTime, 0.015);
+      }
       return;
     case "pause":
       return pause();

@@ -26,6 +26,7 @@ const entryPoints = {
   settings: "src/settings/settings.ts",
   worker: "src/worker/storage-worker.ts",
   "tap-worklet": "src/offscreen/tap-worklet.ts",
+  "meeting-mic": "src/content/meeting-mic.ts",
 };
 
 const staticFiles = [

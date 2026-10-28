@@ -2,7 +2,15 @@
 // quality the screen allows, the microphone, and a transcript. The only choices here are the title,
 // the Downloads copy, and (if enabled on the Settings page) the microphone.
 
-import { ACTIVE_KEY, LAST_ERROR_KEY, liveDuration, type ActiveRecording, type BackgroundRequest, type Reply } from "../lib/messages";
+import {
+  ACTIVE_KEY,
+  LAST_ERROR_KEY,
+  liveDuration,
+  micMuted,
+  type ActiveRecording,
+  type BackgroundRequest,
+  type Reply,
+} from "../lib/messages";
 import { hydrateIcons, icon } from "../lib/icons";
 import { formatBytes, formatDuration } from "../lib/session";
 import { loadSettings, micEnabled, saveSettings, type Settings } from "../lib/settings";
@@ -169,6 +177,23 @@ function renderTranscriptStatus(): void {
       : `${formatDuration(t.doneMs)} of ${formatDuration(t.receivedMs)}${t.error ? ` · ${t.error}` : ""}`;
 }
 
+function renderMic(): void {
+  const mic = active?.mic;
+  $<HTMLElement>("mic-box").hidden = !mic?.recorded;
+  if (!mic?.recorded) return;
+  const text = $<HTMLElement>("mic-text");
+  const muted = micMuted(mic);
+  text.dataset.tone = muted ? "warn" : "ok";
+  text.textContent = mic.manual
+    ? "Your mic is muted in Dohra"
+    : mic.meeting === true
+      ? "Muted in the meeting: your mic is not recorded"
+      : mic.meeting === false
+        ? "Your mic is recorded (follows the meeting's mute)"
+        : "Your mic is recorded";
+  setButton($<HTMLButtonElement>("mic-toggle"), "mic", mic.manual ? "Unmute" : "Mute");
+}
+
 function setButton(b: HTMLButtonElement, iconName: string, text: string): void {
   b.replaceChildren(icon(iconName), text);
 }
@@ -203,6 +228,7 @@ function render(): void {
   if (active.status === "paused") setButton(pauseButton, "record", "Resume");
   else setButton(pauseButton, "pause", "Pause");
   setButton(stopButton, "stop", "Stop");
+  renderMic();
 
   tick();
   if (active.status === "recording") timer = window.setInterval(tick, 500);
@@ -236,6 +262,10 @@ async function main(): Promise<void> {
     if (e.key === "Enter") void startRecording();
   });
   stopButton.addEventListener("click", () => void request({ target: "background", type: "stop" }).catch((e) => showError(String(e))));
+  $<HTMLButtonElement>("mic-toggle").addEventListener("click", () => {
+    const muted = !active?.mic?.manual;
+    void request({ target: "background", type: "mic-manual", muted }).catch((e) => showError(String(e)));
+  });
   pauseButton.addEventListener("click", () => {
     const type = active?.status === "paused" ? "resume" : "pause";
     void request({ target: "background", type }).catch((e) => showError(String(e)));

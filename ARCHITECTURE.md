@@ -430,6 +430,33 @@ Settings from earlier versions (mode, quality, transcribe, language) are ignored
 The microphone needs permission once. While it is required and not granted, the
 popup's Start button is disabled and links to the permission page.
 
+### Following the meeting's mute
+
+Dohra captures the microphone itself, not through the meeting, so muting in the
+meeting does not reach it. The offscreen recorder therefore sends the microphone
+through a gain node, the *gate*, which feeds both the recording mix and the
+transcript tap. Muted means gain 0, with a 15 ms ramp so the cut does not click. The
+microphone track keeps running, so unmuting is instant and the timeline stays whole.
+
+Two things close the gate (`micMuted` in [messages.ts](src/lib/messages.ts)):
+
+- **The meeting.** On a meeting site, the background injects
+  [content/meeting-mic.ts](src/content/meeting-mic.ts) into the recorded tab with
+  `chrome.scripting`, using the access the user's click granted (`activeTab`). No site
+  permissions are needed. The script reads your own mic button's label: "Turn on
+  microphone" (Meet, which also sets `data-is-muted`), "Unmute" (Teams), "unmute my
+  microphone" (Zoom). It reports changes, found by a MutationObserver plus a 1-second
+  timer. Labels about other people ("Mute all", "Mute Asha's microphone") are
+  ignored. The background waits up to 0.8 s for the first report, so a recording
+  started while muted starts muted.
+- **Dohra.** The popup's Mute button.
+
+The script runs only on Meet, Teams, Zoom and Webex (`isMeetingHost`). Elsewhere a
+"Mute" button is usually a video player's sound, not your microphone. A meeting UI in
+another language, or a redesign that changes the labels, leaves the state unknown, and
+then only Dohra's own Mute applies. The e2e test serves a Meet-like page at
+`meet.google.com`, via `--host-resolver-rules`, to check the whole path.
+
 ## Testing
 
 - **Unit tests** (`npm test`) cover the WebM repair against synthetic EBML: the

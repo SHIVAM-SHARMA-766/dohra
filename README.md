@@ -122,6 +122,11 @@ quick-start popup* on Dohra's **Settings** page (linked from the popup and the
 library). The popup then shows **Include my microphone**. Use headphones if you can;
 otherwise the microphone also picks up the class from your speakers.
 
+**Muting.** In Google Meet, Microsoft Teams, Zoom and Webex on the web, Dohra follows
+the meeting's mute: while you are muted there, your microphone is silent in the
+recording and the transcript too. On any site, **Mute** in the popup (while recording)
+does the same, whatever the meeting says.
+
 **Transcripts** are made while you record, by the companion, in Roman-script
 Hinglish, so a class can move freely between Hindi and English.
 The popup shows how far the transcript has got. If the companion is not installed or

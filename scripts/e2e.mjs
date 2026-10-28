@@ -7,9 +7,11 @@
 //   0. first-run setup page: microphone and companion shown as done, then the Small
 //      speech model downloaded from the page and made active
 //   1. video + mic, with a pause in the middle, stopped from the popup
+//   1b. a meeting page at meet.google.com (served locally): muting in the meeting,
+//      and in Dohra, silences the recorded microphone
 //   2. stopped by closing the recorded tab
 //   3. browser killed mid-recording, then recovered by the library on next launch
-//   4. the library lists them
+//   4. the library lists them all
 //   5. live transcription of a speech page through the companion, then the session
 //      page: every line shown, clicking a line seeks, search filters
 //   6. transcribing a recording again from its session page, after its transcript
@@ -99,11 +101,31 @@ const SPEECH_PAGE = `<!doctype html><title>Speech class</title>
 <body style="margin:0;background:#123;color:#fff;font:32px sans-serif">
 <p>Speech</p><audio src="/jfk.wav" autoplay loop></audio>`;
 
+// A stand-in for Google Meet's microphone button, as its labels and data-is-muted read.
+const MEET_PAGE = `<!doctype html><title>Meet – e2e</title>
+<body style="margin:0;background:#202124;color:#fff;font:24px sans-serif"><p>Meeting</p>
+<button id="mic" data-is-muted="false" aria-label="Turn off microphone (ctrl + d)">mic</button>
+<button aria-label="Turn off camera (ctrl + e)">cam</button>
+<audio src="/jfk.wav" autoplay loop></audio>
+<script>
+  const b = document.getElementById("mic");
+  b.onclick = () => {
+    const muted = b.dataset.isMuted !== "true";
+    b.dataset.isMuted = String(muted);
+    b.setAttribute("aria-label", muted ? "Turn on microphone (ctrl + d)" : "Turn off microphone (ctrl + d)");
+  };
+</script>`;
+
 function serve() {
   const server = http.createServer(async (req, res) => {
     if (req.url === "/jfk.wav") {
       res.writeHead(200, { "content-type": "audio/wav" });
       res.end(await readFile(JFK.path));
+      return;
+    }
+    if (req.headers.host?.startsWith("meet.google.com")) {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(MEET_PAGE);
       return;
     }
     res.writeHead(200, { "content-type": "text/html" });
@@ -156,6 +178,8 @@ async function setupCompanion() {
 
 // ---- browser ------------------------------------------------------------------------
 
+let serverPort = 0;
+
 async function launch() {
   const browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -174,6 +198,8 @@ async function launch() {
       // Chrome's download bubble pops open after each download and takes focus,
       // which closes the extension popup the next scenario is trying to open.
       "--disable-features=DownloadBubble,DownloadBubbleV2",
+      // meet.google.com is served by the test server (MEET_PAGE), over plain HTTP.
+      `--host-resolver-rules=MAP meet.google.com 127.0.0.1:${serverPort}`,
       // GitHub's Ubuntu runners block the user namespaces Chromium's sandbox needs.
       ...(process.env.CI ? ["--no-sandbox"] : []),
     ],
@@ -437,6 +463,7 @@ async function main() {
     JSON.stringify({ download: { default_directory: downloads, prompt_for_download: false } }),
   );
   const server = await serve();
+  serverPort = server.address().port;
   const url = `http://127.0.0.1:${server.address().port}/`;
 
   let { browser, ext, openedSetup } = await launch();
@@ -494,6 +521,40 @@ async function main() {
     check(!err1, "no error reported", err1 ?? "");
     await verify(browser, ext, one, { endReason: "user", durationS: [11, 13.5], exported: true });
 
+    console.log("\n1b. meeting mute silences the recorded microphone");
+    const meet = await browser.newPage();
+    await meet.goto("http://meet.google.com/abc-defg-hij");
+    const mb = await startRecording(browser, meet, ext, control, { title: "E2E meeting", mic: true });
+    const micState = async () => (await state(control)).active?.mic;
+    const waitMic = async (want, timeout = 10_000) => {
+      const until = Date.now() + timeout;
+      let m;
+      while (Date.now() < until) {
+        m = await micState();
+        if (m && Object.entries(want).every(([k, v]) => m[k] === v)) return m;
+        await sleep(200);
+      }
+      return m;
+    };
+    await sleep(3_000);
+    const live = await waitMic({ meeting: false });
+    check(live?.recorded === true && live?.meeting === false, "reads the meeting's mic as live", JSON.stringify(live));
+    await meet.click("#mic");
+    const mutedThere = await waitMic({ meeting: true });
+    check(mutedThere?.meeting === true, "muting in the meeting mutes the recorded mic", JSON.stringify(mutedThere));
+    await meet.click("#mic");
+    await waitMic({ meeting: false });
+    const reply = await control.evaluate(() => chrome.runtime.sendMessage({ target: "background", type: "mic-manual", muted: true }));
+    const mutedHere = await waitMic({ manual: true });
+    check(reply?.ok && mutedHere?.manual === true, "Dohra's own mute works too", JSON.stringify(mutedHere));
+    await sleep(2_000);
+    await command(control, "stop");
+    await waitForStatus(control, null);
+    const errMeet = (await state(control)).lastError;
+    check(!errMeet, "no error reported", errMeet ?? "");
+    await verify(browser, ext, mb, { endReason: "user", durationS: [4, 30], exported: true });
+    await meet.close();
+
     console.log("\n2. stopped by closing the tab");
     const page2 = await browser.newPage();
     await page2.goto(url);
@@ -521,18 +582,18 @@ async function main() {
     // Everything up to the last flushed chunk (every 3 s) survives.
     await verify(browser, ext, three, { endReason: "recovered", durationS: [5.5, 10.5], exported: false });
 
-    console.log("\n4. library lists all three");
+    console.log("\n4. library lists all four");
     const list = await browser.newPage();
     await list.goto(`chrome-extension://${ext.id}/library.html`);
     await list.waitForSelector(".item");
     const titles = await list.$$eval(".item .title", (els) => els.map((e) => e.textContent));
-    check(titles.length === 3, "three recordings listed", titles.join(" | "));
+    check(titles.length === 4, "four recordings listed", titles.join(" | "));
     const folders = await readdir(join(downloads, "Dohra"));
     const withRecording = [];
     for (const f of folders) {
       if ((await readdir(join(downloads, "Dohra", f))).includes("recording.webm")) withRecording.push(f);
     }
-    check(withRecording.length === 2, "two recordings copied to Downloads/Dohra", withRecording.join(", "));
+    check(withRecording.length === 3, "three recordings copied to Downloads/Dohra", withRecording.join(", "));
 
     if (TRANSCRIBE) {
       console.log("\n5. live transcription through the companion, then the session page");

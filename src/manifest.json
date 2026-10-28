@@ -12,7 +12,8 @@
     "storage",
     "unlimitedStorage",
     "downloads",
-    "nativeMessaging"
+    "nativeMessaging",
+    "scripting"
   ],
   "background": {
     "service_worker": "background.js"

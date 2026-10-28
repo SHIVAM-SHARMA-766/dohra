@@ -13,6 +13,8 @@ export interface StartOptions {
   recorder: string;
   /** Tap audio for the companion; set only once it has accepted the session. */
   transcribe: boolean;
+  /** Start with the microphone silenced (already muted in the meeting). */
+  micMuted?: boolean;
 }
 
 /** Popup (or keyboard shortcut) → background. */
@@ -21,6 +23,10 @@ export type BackgroundRequest =
   | { target: "background"; type: "stop" }
   | { target: "background"; type: "pause" }
   | { target: "background"; type: "resume" }
+  /** Mute or unmute your microphone in the recording, whatever the meeting says. */
+  | { target: "background"; type: "mic-manual"; muted: boolean }
+  /** From the meeting page (content/meeting-mic.ts): your mic's state there; null if unknown. */
+  | { target: "background"; type: "meeting-mic"; muted: boolean | null }
   /** Pages ask for the companion's state (replies with CompanionInfo). */
   | { target: "background"; type: "companion-status" }
   /** Settings and setup manage speech models (replies with CompanionInfo). */
@@ -64,6 +70,8 @@ export type OffscreenRequest =
   | { target: "offscreen"; type: "stop" }
   | { target: "offscreen"; type: "pause" }
   | { target: "offscreen"; type: "resume" }
+  /** Silence or restore the microphone without stopping it. */
+  | { target: "offscreen"; type: "mic-mute"; muted: boolean }
   /** Sent once exported files are saved (or failed), so the recorder can record that and shut down. */
   | { target: "offscreen"; type: "exported"; ok: boolean };
 
@@ -79,6 +87,21 @@ export interface ActiveRecording {
   mode: Mode;
   status: ActiveStatus;
   progress: Progress;
+  /** Whether the microphone is recorded, and what mutes it. */
+  mic?: MicState;
+}
+
+export interface MicState {
+  recorded: boolean;
+  /** Muted in the meeting (true), live there (false), or not a meeting Dohra can read (null). */
+  meeting: boolean | null;
+  /** Muted from Dohra's popup. */
+  manual: boolean;
+}
+
+/** The microphone is silenced in the recording when muted in the meeting or in Dohra. */
+export function micMuted(mic: MicState | undefined): boolean {
+  return !!mic && (mic.manual || mic.meeting === true);
 }
 
 export const ACTIVE_KEY = "active";
