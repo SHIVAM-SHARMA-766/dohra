@@ -259,8 +259,20 @@ How the pieces fit together is in [ARCHITECTURE.md](ARCHITECTURE.md).
 **Releasing:** bump `version` in `package.json`, commit, then push a matching tag:
 
 ```sh
-git tag v0.3.0 && git push origin v0.3.0
+git tag v0.5.0 && git push origin v0.5.0
 ```
 
 The release workflow builds the extension zip and the companion for Linux, Windows and
 macOS, and attaches them to a GitHub release with their checksums.
+
+## License
+
+Dohra is released under the [MIT License](LICENSE).
+
+It downloads, and does not include, software and models under their own licenses:
+- [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (MIT);
+- OpenAI's Whisper models (MIT);
+- the [Silero VAD](https://github.com/snakers4/silero-vad) model (MIT);
+- [Oriserve/Whisper-Hindi2Hinglish-Apex](https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex)
+  (Apache 2.0), converted for whisper.cpp in
+  [dohra-models](https://github.com/SHIVAM-SHARMA-766/dohra-models).
