@@ -43,6 +43,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
+import https from "node:https";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
@@ -116,16 +117,38 @@ const MEET_PAGE = `<!doctype html><title>Meet – e2e</title>
   };
 </script>`;
 
-function serve() {
-  const server = http.createServer(async (req, res) => {
+/**
+ * Serves MEET_PAGE over HTTPS for meet.google.com, which Chrome only loads over HTTPS
+ * (it is on the HSTS preload list). The certificate is made for the test, and Chrome
+ * trusts its key through --ignore-certificate-errors-spki-list, so the page counts as
+ * properly secure. Plain --ignore-certificate-errors would not do: the page would load
+ * as insecure, and the toolbar popup would not open over it.
+ */
+async function serveMeet() {
+  const key = join(work, "meet-key.pem");
+  const cert = join(work, "meet-cert.pem");
+  run("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "2",
+    "-subj", "/CN=meet.google.com", "-addext", "subjectAltName=DNS:meet.google.com"]);
+  const pub = spawnSync("openssl", ["x509", "-in", cert, "-pubkey", "-noout"]).stdout;
+  const der = spawnSync("openssl", ["pkey", "-pubin", "-outform", "der"], { input: pub }).stdout;
+  spki = createHash("sha256").update(der).digest("base64");
+  const server = https.createServer({ key: await readFile(key), cert: await readFile(cert) }, async (req, res) => {
     if (req.url === "/jfk.wav") {
       res.writeHead(200, { "content-type": "audio/wav" });
       res.end(await readFile(JFK.path));
       return;
     }
-    if (req.headers.host?.startsWith("meet.google.com")) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(MEET_PAGE);
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(MEET_PAGE);
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
+
+function serve() {
+  const server = http.createServer(async (req, res) => {
+    if (req.url === "/jfk.wav") {
+      res.writeHead(200, { "content-type": "audio/wav" });
+      res.end(await readFile(JFK.path));
       return;
     }
     res.writeHead(200, { "content-type": "text/html" });
@@ -178,7 +201,8 @@ async function setupCompanion() {
 
 // ---- browser ------------------------------------------------------------------------
 
-let serverPort = 0;
+let meetPort = 0;
+let spki = "";
 
 async function launch() {
   const browser = await puppeteer.launch({
@@ -198,8 +222,9 @@ async function launch() {
       // Chrome's download bubble pops open after each download and takes focus,
       // which closes the extension popup the next scenario is trying to open.
       "--disable-features=DownloadBubble,DownloadBubbleV2",
-      // meet.google.com is served by the test server (MEET_PAGE), over plain HTTP.
-      `--host-resolver-rules=MAP meet.google.com 127.0.0.1:${serverPort}`,
+      // meet.google.com is served locally (serveMeet), with a certificate trusted by key.
+      `--host-resolver-rules=MAP meet.google.com 127.0.0.1:${meetPort}`,
+      `--ignore-certificate-errors-spki-list=${spki}`,
       // GitHub's Ubuntu runners block the user namespaces Chromium's sandbox needs.
       ...(process.env.CI ? ["--no-sandbox"] : []),
     ],
@@ -463,7 +488,8 @@ async function main() {
     JSON.stringify({ download: { default_directory: downloads, prompt_for_download: false } }),
   );
   const server = await serve();
-  serverPort = server.address().port;
+  const meetServer = await serveMeet();
+  meetPort = meetServer.address().port;
   const url = `http://127.0.0.1:${server.address().port}/`;
 
   let { browser, ext, openedSetup } = await launch();
@@ -523,7 +549,7 @@ async function main() {
 
     console.log("\n1b. meeting mute silences the recorded microphone");
     const meet = await browser.newPage();
-    await meet.goto("http://meet.google.com/abc-defg-hij");
+    await meet.goto("https://meet.google.com/abc-defg-hij");
     const mb = await startRecording(browser, meet, ext, control, { title: "E2E meeting", mic: true });
     const micState = async () => (await state(control)).active?.mic;
     const waitMic = async (want, timeout = 10_000) => {
@@ -709,6 +735,7 @@ async function main() {
   } finally {
     await browser.close().catch(() => {});
     server.close();
+    meetServer.close();
   }
 
   console.log(failures ? `\n${failures} check(s) failed` : "\nall checks passed");
