@@ -55,6 +55,8 @@ main {
 }
 
 .step {
+  /* A grid item grows to fit a long line of code unless allowed to shrink. */
+  min-width: 0;
   counter-increment: step;
   position: relative;
   background: var(--surface);
@@ -125,6 +127,22 @@ main {
   font-size: 13px;
   font-weight: 650;
   margin: 14px 0 6px;
+}
+
+.platform {
+  position: relative;
+}
+
+.platform pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-right: 76px;
+}
+
+.platform .copy {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
 }
 
 .platform.current h3::after {

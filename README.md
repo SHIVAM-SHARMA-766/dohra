@@ -28,80 +28,87 @@ same session format:
 | 4 | Live transcript in a side panel, with a hotkey to hide it while screen sharing | Planned |
 | 5 | Desktop apps (e.g. the Zoom app) as well as browser tabs | Planned |
 
-## Install
+## Install, step by step
 
-Dohra runs in Chromium-based browsers: **Chrome, Edge and Brave**, on Linux, Windows or
-macOS. It is not on the Chrome Web Store; you load it yourself.
+Dohra runs in Chromium-based browsers (**Chrome, Edge and Brave**) on Linux, Windows or
+macOS. It is not on the Chrome Web Store yet, so you load it yourself. That takes about
+five minutes, plus the speech model's download.
 
-1. Download `dohra-<version>.zip` from this repository's
-   [Releases](../../releases) page, and unzip it somewhere permanent. The browser loads
-   the extension from that folder every time it starts, so don't delete the folder.
-2. Open `chrome://extensions` (or `edge://extensions`, `brave://extensions`).
-3. Turn on **Developer mode**.
-4. Click **Load unpacked** and choose the unzipped folder.
-5. Pin Dohra to the toolbar from the puzzle-piece menu so it is one click away.
+### 1. Download the extension
 
-To update, unzip the new release over the same folder and press the reload icon on
-Dohra's card in `chrome://extensions`. Recordings are kept across updates. They are
-lost if the extension is *removed*, unless they were copied to Downloads (see below).
+Download **[dohra-extension.zip](https://github.com/SHIVAM-SHARMA-766/dohra/releases/latest/download/dohra-extension.zip)**
+from the [latest release](https://github.com/SHIVAM-SHARMA-766/dohra/releases/latest)
+and unzip it into a folder you will keep, for example `Documents/Dohra`. The browser
+loads Dohra from that folder every time it starts, so do not delete or move it.
 
-**From source** (needs Node.js 20.19 or later, and Go 1.26 for the companion):
+### 2. Load it into the browser
 
-```sh
-gh repo clone SHIVAM-SHARMA-766/dohra && cd dohra
-npm ci && npm run build      # then load the dist/ folder as above
-cd companion && go build -o dohra-companion . && ./dohra-companion install
-```
+1. Open `chrome://extensions` (`edge://extensions` in Edge, `brave://extensions` in
+   Brave).
+2. Turn on **Developer mode**, at the top right.
+3. Click **Load unpacked** and choose the unzipped folder: the one that contains
+   `manifest.json`.
 
-### First-run setup
+![chrome://extensions with Developer mode and Load unpacked marked](docs/images/01-chrome-extensions.png)
 
-Installing Dohra opens its **setup page**, which walks through three steps and ticks
-each off by itself:
+4. Click the puzzle-piece icon in the toolbar and pin **Dohra**, so it is one click
+   away.
 
-1. **Allow the microphone**, so your own questions are recorded too.
-2. **Install the companion**, `dohra-companion`: a small program (about 40 MB with
-   [whisper.cpp](https://github.com/ggml-org/whisper.cpp)) that makes transcripts on
-   this computer. The browser starts it when needed, and nothing is uploaded. The page
-   shows the commands for your system:
+### 3. Follow the setup page
 
-   ```sh
-   # Linux (x86-64); on macOS run `brew install whisper-cpp` first and pick the darwin build
-   gh release download --repo SHIVAM-SHARMA-766/dohra --pattern dohra-companion-linux-amd64 --output dohra-companion
-   chmod +x dohra-companion && ./dohra-companion install
+Dohra opens its setup page by itself. It has three steps, and each is ticked off as it
+is done.
 
-   # Windows (PowerShell)
-   gh release download --repo SHIVAM-SHARMA-766/dohra --pattern dohra-companion-windows-amd64.exe --output dohra-companion.exe
-   .\dohra-companion.exe install
-   ```
+**Allow the microphone**, so your own questions are recorded too.
 
-   `install` downloads whisper.cpp and the voice detector, checks every file against a
-   pinned SHA-256, and registers itself with Chrome, Chromium, Brave and Edge.
-3. **Choose a speech model**, downloaded from the page with a progress bar:
+**Install the companion.** Transcripts are made by a small program on your computer.
+Nothing is uploaded. The page shows the commands for your system, with a **Copy**
+button. Open a terminal (on Windows, *PowerShell*), paste the commands and press
+Enter. The page notices by itself when the companion is installed.
 
-   | Model | Download | On a 6-core laptop |
-   |---|---|---|
-   | **Small** | 190 MB | Keeps up with any class; more mistakes, especially in Hindi |
-   | **Medium** | 540 MB | Keeps up; the transcript is ready a few minutes after class |
-   | **High** (Hindi2Hinglish) | 575 MB | Clearly best for Hindi and Hinglish; ready about 15 minutes after an hour-long class |
+![The setup page, showing the commands that install the companion](docs/images/02-setup-companion.png)
 
-   The page recommends Medium for computers with 8 or more CPU threads, and Small
-   otherwise.
+| System | Commands |
+|---|---|
+| Linux | `curl -fLo dohra-companion https://github.com/SHIVAM-SHARMA-766/dohra/releases/latest/download/dohra-companion-linux-amd64`<br>`chmod +x dohra-companion`<br>`./dohra-companion install` |
+| Windows (PowerShell) | `Invoke-WebRequest https://github.com/SHIVAM-SHARMA-766/dohra/releases/latest/download/dohra-companion-windows-amd64.exe -OutFile dohra-companion.exe`<br>`.\dohra-companion.exe install` |
+| macOS (needs [Homebrew](https://brew.sh)) | `brew install whisper-cpp`<br>`curl -fLo dohra-companion https://github.com/SHIVAM-SHARMA-766/dohra/releases/latest/download/dohra-companion-darwin-$(uname -m \| sed s/x86_64/amd64/)`<br>`chmod +x dohra-companion`<br>`./dohra-companion install` |
 
-Models are managed only in Dohra: **Settings → Speech model** downloads more of them,
-switches between installed ones, and removes those not in use. A switch applies to
-everything not transcribed yet, including a class in progress. A download that is
-interrupted continues where it stopped.
+`install` copies the companion into your user folder, downloads whisper.cpp (the speech
+engine) and a voice detector, checks every file against a pinned SHA-256, and registers
+itself with Chrome, Chromium, Brave and Edge. The downloaded `dohra-companion` file
+can be deleted afterwards. ARM builds are in the release as well
+(`dohra-companion-linux-arm64`, `-windows-arm64.exe`).
 
-Without the companion, Dohra still records, but there is no transcript until it is set
-up. `dohra-companion status` shows what is installed; `dohra-companion uninstall --purge` removes it all.
+**Choose a speech model.** Click **Download** on one. The first one downloaded is used
+straight away.
 
-## Use
+![Choosing a speech model on the setup page](docs/images/03-setup-model.png)
+
+| Model | Download | On a 6-core laptop |
+|---|---|---|
+| **Small** | 190 MB | Keeps up with any class; more mistakes, especially in Hindi |
+| **Medium** | 540 MB | Keeps up; the transcript is ready a few minutes after class |
+| **High** (Hindi2Hinglish) | 575 MB | Clearly best for Hindi and Hinglish; ready about 15 minutes after an hour-long class |
+
+The page recommends Medium for computers with 8 or more CPU threads, and Small
+otherwise. You can download another model, switch, or remove one later in **Settings
+→ Speech model**. An interrupted download continues where it stopped.
+
+## Record a class
 
 1. Open the class in a tab.
-2. Click the Dohra icon, and press **Start recording**. The toolbar icon shows **REC**
+2. Click the Dohra icon and press **Start recording**. The toolbar icon shows **REC**
    while recording.
 3. **Pause** and **Stop** are in the same popup. `Alt+Shift+R` starts or stops
    recording without opening it.
+
+| Before | While recording |
+|---|---|
+| ![The popup, ready to record](docs/images/04-popup.png) | ![The popup while recording, with the transcript's progress](docs/images/05-popup-recording.png) |
+
+While recording, the popup shows how far the transcript has got. It also shows whether
+your microphone is being recorded, with a **Mute** button.
 
 Every recording is the same, so there is nothing to choose:
 
@@ -143,7 +150,16 @@ While a transcript is being made, the recording's page shows a percentage and a
 progress bar, and lines appear as each part (about two minutes of audio) finishes.
 The library shows the same percentage.
 
-Open a recording from the library to see it with its transcript:
+## Library and transcripts
+
+**Library** (the grid icon in the popup) lists every recording, with its transcript's
+state. **Import video** adds a file you already have.
+
+![The library](docs/images/06-library.png)
+
+Open a recording to see it with its transcript:
+
+![A recording with its Hinglish transcript](docs/images/07-session.png)
 
 - Click any line to jump the recording to that moment; the line being played is
   highlighted and kept in view (untick **Follow** to scroll freely).
@@ -155,6 +171,11 @@ Open a recording from the library to see it with its transcript:
 
 A recording made while the companion was missing can be transcribed afterwards from
 its page with **Transcribe this recording**.
+
+**Settings** (the gear icon) holds the few things you can change: the speech model,
+a microphone switch for the popup, and the Downloads copy.
+
+![Settings](docs/images/08-settings.png)
 
 ### Where recordings go
 
@@ -171,13 +192,31 @@ its page with **Transcribe this recording**.
   ```
 
   This copy survives removing the extension or the browser. You can turn it off in the
-  popup. Turning it off saves disk space, but the browser's copy is then the only one.
+  popup or in Settings. Turning it off saves disk space, but the browser's copy is then the only one.
 
 **If the browser crashes** mid-recording, open the library afterwards. It finishes the
 interrupted recording automatically and keeps everything up to the last few seconds.
 
+### Update or uninstall
+
+- **Update the extension:** download the new
+  [dohra-extension.zip](https://github.com/SHIVAM-SHARMA-766/dohra/releases/latest/download/dohra-extension.zip),
+  unzip it over the same folder, and press the reload icon on Dohra's card in
+  `chrome://extensions`. Recordings are kept.
+- **Update the companion:** run the same commands as in step 3 again.
+- **Uninstall:** remove Dohra in `chrome://extensions`, then run
+  `~/.local/share/dohra/bin/dohra-companion uninstall --purge` (Linux),
+  `~/Library/Application\ Support/Dohra/bin/dohra-companion uninstall --purge` (macOS) or
+  `& "$env:LOCALAPPDATA\Dohra\bin\dohra-companion.exe" uninstall --purge` (Windows).
+  Removing the extension deletes the library inside the browser; the copies in
+  `Downloads/Dohra/` stay.
+
 ### Limits worth knowing
 
+- **Tested on Linux.** The extension is the same everywhere, but the companion has so
+  far run only on Linux. Windows and macOS builds are published and should work;
+  please [open an issue](https://github.com/SHIVAM-SHARMA-766/dohra/issues) if they
+  don't.
 - **Browser tabs only.** Classes in a desktop app, such as the Zoom app, are not
   captured yet; open them in the browser instead.
 - **Browser pages are off limits.** Pages such as `chrome://` and the Web Store cannot
@@ -196,12 +235,21 @@ interrupted recording automatically and keeps everything up to the last few seco
 
 ## Develop
 
+Build from source (needs Node.js 20.19 or later, and Go 1.26 for the companion):
+
+```sh
+git clone https://github.com/SHIVAM-SHARMA-766/dohra && cd dohra
+npm ci && npm run build      # then Load unpacked the dist/ folder
+cd companion && go build -o dohra-companion . && ./dohra-companion install
+```
+
 ```sh
 npm run watch       # rebuild dist/ on change; reload the extension to pick it up
 npm run typecheck
 npm test            # unit tests (vitest)
 npm run e2e         # end-to-end test in real Chromium; Linux, needs xvfb-run and Go
-npm run package     # release/dohra-<version>.zip
+npm run package     # release/dohra-extension.zip
+xvfb-run -a node scripts/screenshots.mjs   # docs/images/, after an e2e run
 
 cd companion && go test ./...   # the companion
 ```

@@ -18,25 +18,28 @@ interface Platform {
   commands: string;
 }
 
+// The latest release's files, at addresses that always point to the newest version.
+const DOWNLOAD = `https://github.com/${REPO}/releases/latest/download`;
+
 const PLATFORMS: Platform[] = [
   {
     id: "linux",
-    name: "Linux (x86-64)",
-    commands: `gh release download --repo ${REPO} --pattern dohra-companion-linux-amd64 --output dohra-companion
+    name: "Linux (Terminal)",
+    commands: `curl -fLo dohra-companion ${DOWNLOAD}/dohra-companion-linux-amd64
 chmod +x dohra-companion
 ./dohra-companion install`,
   },
   {
     id: "windows",
     name: "Windows (PowerShell)",
-    commands: `gh release download --repo ${REPO} --pattern dohra-companion-windows-amd64.exe --output dohra-companion.exe
+    commands: `Invoke-WebRequest ${DOWNLOAD}/dohra-companion-windows-amd64.exe -OutFile dohra-companion.exe
 .\\dohra-companion.exe install`,
   },
   {
     id: "mac",
-    name: "macOS",
+    name: "macOS (Terminal, with Homebrew)",
     commands: `brew install whisper-cpp
-gh release download --repo ${REPO} --pattern "dohra-companion-darwin-$(uname -m | sed s/x86_64/amd64/)" --output dohra-companion
+curl -fLo dohra-companion ${DOWNLOAD}/dohra-companion-darwin-$(uname -m | sed s/x86_64/amd64/)
 chmod +x dohra-companion
 ./dohra-companion install`,
   },
@@ -59,7 +62,16 @@ function renderPlatforms(): void {
     title.textContent = p.name;
     const pre = document.createElement("pre");
     pre.textContent = p.commands;
-    section.append(title, pre);
+    const copy = document.createElement("button");
+    copy.className = "copy small";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", () => {
+      void navigator.clipboard.writeText(p.commands).then(() => {
+        copy.textContent = "Copied";
+        setTimeout(() => (copy.textContent = "Copy"), 1500);
+      });
+    });
+    section.append(title, pre, copy);
     $("platforms").append(section);
   }
 }
