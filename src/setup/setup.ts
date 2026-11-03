@@ -164,6 +164,7 @@ async function check(): Promise<void> {
 // ---- transcripts or recording only ----------------------------------------------
 
 let transcribe = true;
+let chosen = false;
 
 function showChoice(): void {
   $("want-transcripts").setAttribute("aria-pressed", String(transcribe));
@@ -174,9 +175,10 @@ function showChoice(): void {
 }
 
 async function choose(want: boolean): Promise<void> {
+  chosen = true;
   transcribe = want;
-  await saveSettings({ ...(await loadSettings()), transcribe: want });
   showChoice();
+  await saveSettings({ ...(await loadSettings()), transcribe: want });
 }
 
 function updateDone(): void {
@@ -189,6 +191,8 @@ $("allow-mic").addEventListener("click", () => void allowMic());
 $("want-transcripts").addEventListener("click", () => void choose(true));
 $("record-only").addEventListener("click", () => void choose(false));
 void loadSettings().then((s) => {
+  // A click made before this resolved wins over the stored value.
+  if (chosen) return;
   transcribe = s.transcribe;
   showChoice();
 });

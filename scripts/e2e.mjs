@@ -520,6 +520,9 @@ async function main() {
       check(before.mic === "true" && before.companion === "true", "setup shows microphone and companion done", JSON.stringify(before));
       check(before.model === "false" && before.models === "small,medium,large", "setup offers Small, Medium and High", before.models);
       await setup.click("#record-only");
+      await setup
+        .waitForFunction(async () => (await chrome.storage.local.get("settings")).settings?.transcribe === false, { timeout: 5_000 })
+        .catch(() => {});
       const recordOnly = await setup.evaluate(async () => ({
         done: !document.getElementById("done").hidden,
         companionShown: document.getElementById("step-companion").offsetParent !== null,
