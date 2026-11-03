@@ -1,10 +1,12 @@
 // First-run setup, opened when Dohra is installed and whenever transcription is
-// not ready: microphone permission, the companion, and a speech model. Each step
-// shows its state and the page moves on by itself as each is done.
+// not ready: microphone permission, then — only for transcripts — the companion and
+// a speech model. Each step shows its state and the page moves on by itself as each
+// is done. Choosing "just record" turns transcripts off and skips the last two.
 
 import { hydrateIcons } from "../lib/icons";
 import type { Reply } from "../lib/messages";
 import { mountModelPicker } from "../lib/model-picker";
+import { loadSettings, saveSettings } from "../lib/settings";
 import type { CompanionInfo } from "../lib/transcript";
 
 const REPO = "SHIVAM-SHARMA-766/dohra";
@@ -159,12 +161,36 @@ async function check(): Promise<void> {
   if (!info || info.version === null) pollTimer = window.setTimeout(() => void check(), POLL_MS);
 }
 
+// ---- transcripts or recording only ----------------------------------------------
+
+let transcribe = true;
+
+function showChoice(): void {
+  $("want-transcripts").setAttribute("aria-pressed", String(transcribe));
+  $("record-only").setAttribute("aria-pressed", String(!transcribe));
+  document.querySelector("main")!.dataset.recordOnly = String(!transcribe);
+  $("done-transcripts").hidden = !transcribe;
+  updateDone();
+}
+
+async function choose(want: boolean): Promise<void> {
+  transcribe = want;
+  await saveSettings({ ...(await loadSettings()), transcribe: want });
+  showChoice();
+}
+
 function updateDone(): void {
-  $("done").hidden = !(micDone && info?.ready);
+  $("done").hidden = !(micDone && (!transcribe || info?.ready));
 }
 
 hydrateIcons();
 renderPlatforms();
 $("allow-mic").addEventListener("click", () => void allowMic());
+$("want-transcripts").addEventListener("click", () => void choose(true));
+$("record-only").addEventListener("click", () => void choose(false));
+void loadSettings().then((s) => {
+  transcribe = s.transcribe;
+  showChoice();
+});
 void checkMic();
 void check();

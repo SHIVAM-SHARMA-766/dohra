@@ -1,6 +1,7 @@
 // Messages between the extension's contexts. chrome.runtime.sendMessage reaches every
 // extension page, so each message names its target and receivers ignore the rest.
 
+import type { SpeakingTile } from "./meeting-speakers";
 import type { SessionMeta } from "./session";
 import type { Mode } from "./settings";
 
@@ -27,6 +28,8 @@ export type BackgroundRequest =
   | { target: "background"; type: "mic-manual"; muted: boolean }
   /** From the meeting page (content/meeting-mic.ts): your mic's state there; null if unknown. */
   | { target: "background"; type: "meeting-mic"; muted: boolean | null }
+  /** From the meeting page (content/meeting-speakers.ts): who is speaking now. */
+  | { target: "background"; type: "meeting-speakers"; speaking: SpeakingTile[]; tiles: number }
   /** Pages ask for the companion's state (replies with CompanionInfo). */
   | { target: "background"; type: "companion-status" }
   /** Settings and setup manage speech models (replies with CompanionInfo). */

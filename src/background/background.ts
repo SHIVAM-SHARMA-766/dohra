@@ -8,6 +8,7 @@ import {
   ACTIVE_KEY,
   errorMessage,
   LAST_ERROR_KEY,
+  liveDuration,
   type ActiveRecording,
   type BackgroundRequest,
   type ExportFile,
@@ -18,8 +19,10 @@ import {
   type Reply,
 } from "../lib/messages";
 import { isMeetingHost } from "../lib/meeting-mic";
+import type { SpeakingTile } from "../lib/meeting-speakers";
 import { sessionId, type SessionMeta } from "../lib/session";
 import { loadSettings, micEnabled } from "../lib/settings";
+import * as speakers from "./speakers";
 import * as transcriber from "./transcriber";
 
 const OFFSCREEN_URL = "offscreen.html";
@@ -113,20 +116,23 @@ async function start(tabId: number, title: string): Promise<void> {
     progress: { durationMs: 0, bytes: 0, paused: false, at: Date.now() },
     mic: { recorded: mic, meeting: null, manual: false },
   });
-  if (mic) await watchMeetingMic(tab);
+  await watchMeeting(tab, mic);
 
-  // Every recording is transcribed. If the companion cannot take it, the class is
-  // still recorded — losing it would be worse — and the transcript can be made later
-  // from the recording's page.
+  // With transcripts on, the recording is transcribed live. If the companion cannot
+  // take it, the class is still recorded — losing it would be worse — and the
+  // transcript can be made later from the recording's page. With them off, Dohra is
+  // just a recorder and does not touch the companion.
   let transcribe = false;
-  try {
-    transcribe = await transcriber.startSession(id, true);
-    if (!transcribe) {
-      const info = await transcriber.checkCompanion();
-      await transcriber.failSession(id, `not transcribed: ${info.problems.join(" ") || "the companion is not ready"}`);
+  if (settings.transcribe) {
+    try {
+      transcribe = await transcriber.startSession(id, true);
+      if (!transcribe) {
+        const info = await transcriber.checkCompanion();
+        await transcriber.failSession(id, `not transcribed: ${info.problems.join(" ") || "the companion is not ready"}`);
+      }
+    } catch (e) {
+      await transcriber.failSession(id, `not transcribed: ${errorMessage(e)}`);
     }
-  } catch (e) {
-    await transcriber.failSession(id, `not transcribed: ${errorMessage(e)}`);
   }
 
   try {
@@ -157,31 +163,45 @@ async function start(tabId: number, title: string): Promise<void> {
   }
 }
 
-// ---- microphone mute ----------------------------------------------------------------
+// ---- the meeting page ---------------------------------------------------------------
 
 const MEETING_MIC_WAIT_MS = 800;
 
 /**
- * On a meeting site, starts reading the meeting's own mic button in the tab and
- * waits briefly for its first report, so a recording begun while muted starts muted.
- * Uses the access the user's click granted (activeTab), so no site permissions.
+ * On a meeting site, starts reading the meeting page in the tab: who is speaking
+ * (for names in the transcript) and, when the microphone is recorded, the meeting's
+ * own mic button. Waits briefly for the mic's first report, so a recording begun
+ * while muted starts muted. Uses the access the user's click granted (activeTab),
+ * so no site permissions.
  */
-async function watchMeetingMic(tab: chrome.tabs.Tab): Promise<void> {
+async function watchMeeting(tab: chrome.tabs.Tab, mic: boolean): Promise<void> {
   let host = "";
   try {
     host = new URL(tab.url ?? "").hostname;
   } catch {}
   if (tab.id === undefined || !isMeetingHost(host)) return;
   try {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["meeting-mic.js"] });
+    const files = mic ? ["meeting-speakers.js", "meeting-mic.js"] : ["meeting-speakers.js"];
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files });
   } catch {
-    return; // the recording goes on, following only Dohra's own mute
+    return; // the recording goes on, following only Dohra's own mute, without names
   }
+  if (!mic) return;
   const until = Date.now() + MEETING_MIC_WAIT_MS;
   while (Date.now() < until && (await getActive())?.mic?.meeting === null) {
     await new Promise((r) => setTimeout(r, 100));
   }
 }
+
+/** Adds a report of who is speaking to the recording's timeline, at the recorded time. */
+async function noteSpeakers(speaking: SpeakingTile[], tiles: number, fromTab: number): Promise<void> {
+  const active = await getActive();
+  if (!active || fromTab !== active.tabId) return;
+  if (active.status !== "recording" && active.status !== "paused" && active.status !== "starting") return;
+  await speakers.record(active.sessionId, liveDuration(active.progress), speaking, tiles);
+}
+
+// ---- microphone mute ----------------------------------------------------------------
 
 /** Records a change in what mutes the microphone and tells the recorder if that changes the result. */
 async function updateMic(patch: Partial<MicState>, fromTab?: number): Promise<void> {
@@ -225,6 +245,8 @@ async function handleRequest(msg: BackgroundRequest, sender: chrome.runtime.Mess
       return updateMic({ manual: msg.muted });
     case "meeting-mic":
       return updateMic({ meeting: msg.muted }, sender.tab?.id ?? -1);
+    case "meeting-speakers":
+      return noteSpeakers(msg.speaking, msg.tiles, sender.tab?.id ?? -1);
     case "companion-status":
       return transcriber.checkCompanion();
     case "model":
@@ -302,12 +324,15 @@ async function handleRecorderEvent(event: RecorderEvent): Promise<void> {
       if (active) await transcriber.failSession(active.sessionId, `could not capture audio for the transcript: ${event.error}`);
       return;
     case "recorder-finalizing":
+      // The last transcript save names its lines from the saved speaker timeline.
+      await speakers.flush();
       // Every audio block was sent before this message, so the companion has it all.
       if (active) await transcriber.stopSession(active.sessionId).catch(() => {});
       return patchActive({ status: "finalizing" });
     case "recorder-finished":
       return finished(event.meta, event.files);
     case "recorder-failed":
+      await speakers.flush();
       if (active) await transcriber.stopSession(active.sessionId).catch(() => {});
       await setLastError(`Recording failed: ${event.error}`);
       await closeOffscreen();

@@ -1,6 +1,6 @@
 // Quick start: one click records the current tab — audio and video at the best
 // quality the screen allows, the microphone, and a transcript. The only choices here are the title,
-// the Downloads copy, and (if enabled on the Settings page) the microphone.
+// the transcript, the Downloads copy, and (if enabled on the Settings page) the microphone.
 
 import {
   ACTIVE_KEY,
@@ -24,6 +24,7 @@ const errorBanner = $<HTMLParagraphElement>("error");
 const titleInput = $<HTMLInputElement>("title");
 const micCheck = $<HTMLInputElement>("mic");
 const autoExportCheck = $<HTMLInputElement>("auto-export");
+const transcribeCheck = $<HTMLInputElement>("transcribe");
 const startButton = $<HTMLButtonElement>("start");
 const pauseButton = $<HTMLButtonElement>("pause");
 const stopButton = $<HTMLButtonElement>("stop");
@@ -72,8 +73,9 @@ async function renderSummary(): Promise<void> {
   $<HTMLElement>("summary").replaceChildren(
     chip("video", "Audio + video"),
     ...(mic ? [chip("mic", "Microphone")] : []),
-    chip("text", "Transcript"),
+    ...(settings.transcribe ? [chip("text", "Transcript")] : []),
   );
+  $<HTMLElement>("companion").hidden = !settings.transcribe;
 
   const blocked = mic && !(await micGranted());
   $<HTMLElement>("mic-help").hidden = !blocked;
@@ -117,9 +119,16 @@ async function showCompanion(): Promise<void> {
 }
 
 async function persistSettings(): Promise<void> {
-  settings = { ...settings, mic: micCheck.checked, autoExport: autoExportCheck.checked };
+  const wasTranscribing = settings.transcribe;
+  settings = {
+    ...settings,
+    mic: micCheck.checked,
+    autoExport: autoExportCheck.checked,
+    transcribe: transcribeCheck.checked,
+  };
   await saveSettings(settings);
   await renderSummary();
+  if (settings.transcribe && !wasTranscribing) void showCompanion();
 }
 
 async function initIdle(): Promise<void> {
@@ -127,6 +136,7 @@ async function initIdle(): Promise<void> {
   $<HTMLElement>("mic-switch").hidden = !settings.micSwitchInPopup;
   micCheck.checked = settings.mic;
   autoExportCheck.checked = settings.autoExport;
+  transcribeCheck.checked = settings.transcribe;
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   titleInput.value = tab?.title ?? "";
@@ -134,8 +144,9 @@ async function initIdle(): Promise<void> {
 
   micCheck.addEventListener("change", () => void persistSettings());
   autoExportCheck.addEventListener("change", () => void persistSettings());
+  transcribeCheck.addEventListener("change", () => void persistSettings());
   await renderSummary();
-  void showCompanion();
+  if (settings.transcribe) void showCompanion();
 }
 
 async function startRecording(): Promise<void> {

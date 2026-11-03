@@ -44,6 +44,7 @@ export const FILES = {
   recording: "recording.webm",
   meta: "session.json",
   transcript: "transcript.json",
+  speakers: "speakers.json", // who spoke when, read from the meeting page
 } as const;
 
 /** The name of a session's media file. */

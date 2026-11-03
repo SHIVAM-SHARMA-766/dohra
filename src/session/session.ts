@@ -11,7 +11,7 @@ import {
   lineAt,
   pcmToBase64,
   readTranscript,
-  SPEAKER_LABEL,
+  speakerLabel,
   TRANSCRIPTS_KEY,
   type CompanionInfo,
   type Transcript,
@@ -67,6 +67,12 @@ function highlight(text: string, query: string): Node[] {
   return [document.createTextNode(text.slice(0, i)), mark, document.createTextNode(text.slice(i + query.length))];
 }
 
+function hue(name: string): number {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.codePointAt(0)!) % 360;
+  return h;
+}
+
 function renderLines(): void {
   const lines = transcript?.lines ?? [];
   const query = search.value.trim().toLowerCase();
@@ -82,11 +88,13 @@ function renderLines(): void {
     time.textContent = formatDuration(line.startMs);
     const body = document.createElement("span");
     body.className = "body";
-    const label = SPEAKER_LABEL[line.speaker];
+    const label = speakerLabel(line);
     if (label) {
       const speaker = document.createElement("span");
-      speaker.className = `speaker ${line.speaker}`;
+      speaker.className = `speaker ${line.speaker}${line.name ? " named" : ""}`;
       speaker.textContent = label;
+      // Each person keeps one colour through the transcript.
+      if (line.name) speaker.style.setProperty("--hue", String(hue(line.name)));
       body.append(speaker);
     }
     body.append(...highlight(displayText(line), query));
@@ -266,7 +274,7 @@ function downloadText(): void {
   const header = `${meta.title}\n${new Date(meta.startedAt).toLocaleString()}\n\n`;
   const body = transcript.lines
     .map((l) => {
-      const label = SPEAKER_LABEL[l.speaker];
+      const label = speakerLabel(l);
       return `[${formatDuration(l.startMs)}] ${label ? `${label}: ` : ""}${displayText(l)}`;
     })
     .join("\n");

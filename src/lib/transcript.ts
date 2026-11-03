@@ -5,6 +5,7 @@
 // rewritten from it as lines arrive, so pages can show a partial transcript, and
 // is final once the companion reports "done".
 
+import type { SpeakerTimeline } from "./meeting-speakers";
 import { FILES, SESSIONS_DIR } from "./session";
 
 export type Speaker = "them" | "me" | "mixed";
@@ -15,6 +16,8 @@ export interface TranscriptLine {
   endMs: number;
   text: string;
   lang?: string;
+  /** Who said it, from the meeting's screen (speakers.json); "them" lines only. */
+  name?: string;
 }
 
 export type TranscriptState = "live" | "transcribing" | "complete" | "failed";
@@ -91,6 +94,28 @@ export async function writeTranscript(t: Transcript): Promise<void> {
   const writable = await handle.createWritable();
   await writable.write(JSON.stringify(t, null, 2) + "\n");
   await writable.close();
+}
+
+export async function readSpeakers(id: string): Promise<SpeakerTimeline | null> {
+  try {
+    const dir = await sessionDir(id);
+    const file = await (await dir.getFileHandle(FILES.speakers)).getFile();
+    return JSON.parse(await file.text()) as SpeakerTimeline;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeSpeakers(id: string, timeline: SpeakerTimeline): Promise<void> {
+  const dir = await sessionDir(id, true);
+  const writable = await (await dir.getFileHandle(FILES.speakers, { create: true })).createWritable();
+  await writable.write(JSON.stringify(timeline) + "\n");
+  await writable.close();
+}
+
+/** A line's speaker as shown: the name from the meeting when known, else Them / Me. */
+export function speakerLabel(line: TranscriptLine): string {
+  return line.name ?? SPEAKER_LABEL[line.speaker];
 }
 
 /** Index of the line playing at `ms`, or -1. Lines are sorted by start time. */

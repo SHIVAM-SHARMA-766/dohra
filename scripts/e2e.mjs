@@ -8,8 +8,9 @@
 //      speech model downloaded from the page and made active
 //   1. video + mic, with a pause in the middle, stopped from the popup
 //   1b. a meeting page at meet.google.com (served locally): muting in the meeting,
-//      and in Dohra, silences the recorded microphone
-//   2. stopped by closing the recorded tab
+//      and in Dohra, silences the recorded microphone; who is speaking is read from
+//      the participant tiles, and the transcript's lines carry that name
+//   2. stopped by closing the recorded tab, with transcripts off (recorder only)
 //   3. browser killed mid-recording, then recovered by the library on next launch
 //   4. the library lists them all
 //   5. live transcription of a speech page through the companion, then the session
@@ -102,13 +103,22 @@ const SPEECH_PAGE = `<!doctype html><title>Speech class</title>
 <body style="margin:0;background:#123;color:#fff;font:32px sans-serif">
 <p>Speech</p><audio src="/jfk.wav" autoplay loop></audio>`;
 
-// A stand-in for Google Meet's microphone button, as its labels and data-is-muted read.
+// A stand-in for Google Meet: its microphone button, as its labels and data-is-muted
+// read, and participant tiles (data-participant-id) whose sound indicator moves while
+// that person talks. Asha talks the whole time (the speech playing is "hers"), Rahul
+// is silent, and the third tile is your own.
 const MEET_PAGE = `<!doctype html><title>Meet – e2e</title>
 <body style="margin:0;background:#202124;color:#fff;font:24px sans-serif"><p>Meeting</p>
 <button id="mic" data-is-muted="false" aria-label="Turn off microphone (ctrl + d)">mic</button>
 <button aria-label="Turn off camera (ctrl + e)">cam</button>
+<style>.tile{display:inline-block;width:240px;height:140px;margin:8px;background:#3c4043}.bars{width:20px;height:20px}</style>
+<div data-participant-id="spaces/e2e/devices/1" class="tile"><div class="bars a"></div><i>more_vert</i><span class="notranslate">Asha Verma</span></div>
+<div data-participant-id="spaces/e2e/devices/2" class="tile"><div class="bars a"></div><span class="notranslate">Rahul K</span></div>
+<div data-participant-id="spaces/e2e/devices/3" class="tile"><div class="bars a"></div><span class="notranslate">Shivam (You)</span></div>
 <audio src="/jfk.wav" autoplay loop></audio>
 <script>
+  const bars = document.querySelector('[data-participant-id$="/1"] .bars');
+  setInterval(() => (bars.className = bars.className === "bars a" ? "bars b" : "bars a"), 120);
   const b = document.getElementById("mic");
   b.onclick = () => {
     const muted = b.dataset.isMuted !== "true";
@@ -509,6 +519,16 @@ async function main() {
       }));
       check(before.mic === "true" && before.companion === "true", "setup shows microphone and companion done", JSON.stringify(before));
       check(before.model === "false" && before.models === "small,medium,large", "setup offers Small, Medium and High", before.models);
+      await setup.click("#record-only");
+      const recordOnly = await setup.evaluate(async () => ({
+        done: !document.getElementById("done").hidden,
+        companionShown: document.getElementById("step-companion").offsetParent !== null,
+        transcribe: (await chrome.storage.local.get("settings")).settings?.transcribe,
+      }));
+      check(recordOnly.done && !recordOnly.companionShown && recordOnly.transcribe === false,
+        "choosing to just record skips the transcript steps", JSON.stringify(recordOnly));
+      await setup.click("#want-transcripts");
+      await setup.waitForFunction(() => document.getElementById("step-companion").offsetParent !== null);
       await setup.$eval('.model[data-model="small"] .model-actions button', (b) => b.click());
       await setup.waitForSelector('.model[data-model="small"][data-state="active"]', { timeout: 900_000 });
       const after = await setup.evaluate(() => ({
@@ -525,13 +545,15 @@ async function main() {
     await page.goto(url);
     const popup = await openPopup(browser, page, ext);
     const quick = await popup.evaluate(() => ({
-      choices: document.querySelectorAll('input[name="mode"], #quality, #language, #transcribe').length,
+      choices: document.querySelectorAll('input[name="mode"], #quality, #language').length,
+      transcribe: document.getElementById("transcribe").checked,
       // Rendered visibility, not just the attribute: CSS can override [hidden].
       micSwitchHidden: document.getElementById("mic-switch").offsetParent === null,
       summary: [...document.querySelectorAll("#summary .chip")].map((c) => c.textContent).join(" · "),
     }));
     await popup.close().catch(() => {});
-    check(quick.choices === 0 && quick.micSwitchHidden, "quick start offers no format, transcript or language choices");
+    check(quick.choices === 0 && quick.micSwitchHidden, "quick start offers no format or language choices");
+    check(quick.transcribe, "transcripts are on by default");
     check(quick.summary === "Audio + video · Microphone · Transcript", "quick start states what is recorded", quick.summary);
     const one = await startRecording(browser, page, ext, control, { title: "E2E video", mic: process.env.E2E_MIC !== "0" });
     await sleep(6_000);
@@ -580,15 +602,42 @@ async function main() {
     check(!errMeet, "no error reported", errMeet ?? "");
     await verify(browser, ext, mb, { endReason: "user", durationS: [4, 30], exported: true });
     await meet.close();
+    const timeline = await control.evaluate(async (id) => {
+      const root = await navigator.storage.getDirectory();
+      const dir = await (await root.getDirectoryHandle("sessions")).getDirectoryHandle(id);
+      return JSON.parse(await (await (await dir.getFileHandle("speakers.json")).getFile()).text());
+    }, mb).catch((e) => ({ error: String(e) }));
+    const heard = new Set((timeline.events ?? []).flatMap((e) => e.speaking.map((s) => s.name)));
+    check(
+      heard.has("Asha Verma") && !heard.has("Rahul K") && timeline.events.every((e) => e.tiles === 3),
+      "reads who is speaking from the meeting's tiles",
+      JSON.stringify([...heard]) + (timeline.error ? ` ${timeline.error}` : ` · ${timeline.events.length} events`),
+    );
+    if (TRANSCRIBE) {
+      const tm = await waitForTranscript(control, mb, 300_000);
+      const them = tm.lines.filter((l) => l.speaker === "them");
+      check(them.length > 0 && them.every((l) => l.name === "Asha Verma"), "the meeting's lines carry the speaker's name",
+        them.map((l) => `${l.name ?? "?"}: ${l.text}`).join(" | "));
+    }
 
-    console.log("\n2. stopped by closing the tab");
+    console.log("\n2. stopped by closing the tab, transcripts off (just a recorder)");
+    const setTranscribe = (on) =>
+      control.evaluate(async (on) => {
+        const { settings } = await chrome.storage.local.get("settings");
+        await chrome.storage.local.set({ settings: { ...settings, transcribe: on } });
+      }, on);
+    await setTranscribe(false);
     const page2 = await browser.newPage();
     await page2.goto(url);
     const two = await startRecording(browser, page2, ext, control, { title: "E2E tab closed", mic: false });
     await sleep(7_000);
     await page2.close();
     await waitForStatus(control, null);
+    await setTranscribe(true);
     await verify(browser, ext, two, { endReason: "tab-closed", durationS: [6, 8.5], exported: true });
+    const twoFiles = (await inspect(browser, ext, two)).names;
+    const twoStatus = await control.evaluate((id) => chrome.storage.session.get("transcripts").then((r) => r.transcripts?.[id] ?? null), two);
+    check(!twoFiles.includes("transcript.json") && twoStatus === null, "no transcript is made or attempted", twoFiles.join(", "));
 
     console.log("\n3. browser killed mid-recording, recovered on next launch");
     const page3 = await browser.newPage();

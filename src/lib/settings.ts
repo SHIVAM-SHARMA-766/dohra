@@ -1,8 +1,9 @@
 // Recording settings, and how the capture size maps to encoder settings.
 //
 // Every recording is audio + video at the screen's full resolution, with the
-// microphone, and is transcribed with the spoken language detected automatically.
-// Those are not choices. What remains configurable lives on Dohra's Settings page.
+// microphone. Those are not choices. Transcripts are on by default and can be turned
+// off, leaving Dohra a plain recorder. What remains configurable lives on Dohra's
+// Settings page.
 
 export type Mode = "audio" | "video"; // "audio" only in recordings made before 0.3
 
@@ -16,12 +17,15 @@ export interface Settings {
   mic: boolean;
   /** Copy each finished recording to Downloads/Dohra/ automatically. */
   autoExport: boolean;
+  /** Transcribe recordings live. Off, Dohra only records and needs no companion. */
+  transcribe: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   micSwitchInPopup: false,
   mic: true,
   autoExport: true,
+  transcribe: true,
 };
 
 /** Whether the next recording includes the microphone. */
@@ -69,6 +73,7 @@ export async function loadSettings(): Promise<Settings> {
     micSwitchInPopup: stored.micSwitchInPopup ?? DEFAULT_SETTINGS.micSwitchInPopup,
     mic: stored.mic ?? DEFAULT_SETTINGS.mic,
     autoExport: stored.autoExport ?? DEFAULT_SETTINGS.autoExport,
+    transcribe: stored.transcribe ?? DEFAULT_SETTINGS.transcribe,
   };
 }
 

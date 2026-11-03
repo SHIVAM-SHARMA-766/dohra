@@ -27,6 +27,7 @@ const entryPoints = {
   worker: "src/worker/storage-worker.ts",
   "tap-worklet": "src/offscreen/tap-worklet.ts",
   "meeting-mic": "src/content/meeting-mic.ts",
+  "meeting-speakers": "src/content/meeting-speakers.ts",
 };
 
 const staticFiles = [

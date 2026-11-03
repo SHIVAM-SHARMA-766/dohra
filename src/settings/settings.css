@@ -41,6 +41,18 @@ section.card {
   color: var(--accent);
 }
 
+#model-settings {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.subhead {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
 #companion {
   margin: 4px 0 12px;
 }

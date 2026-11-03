@@ -9,11 +9,13 @@
 // Each time lines arrive, the transcript is fetched from the companion in pages
 // and rewritten in the session folder, so pages can show it while it grows.
 
+import { nameLines } from "../lib/meeting-speakers";
 import type { ModelAction } from "../lib/messages";
 import { EXPORT_DIR, FILES, SESSIONS_DIR } from "../lib/session";
 import { loadSettings } from "../lib/settings";
 import {
   COMPANION_KEY,
+  readSpeakers,
   readTranscript,
   TRANSCRIPTS_KEY,
   writeTranscript,
@@ -347,6 +349,12 @@ async function save(id: string, final?: TranscriptState, error: string | null = 
     const existing = await readTranscript(id);
     if (existing) return;
     error = e instanceof Error ? e.message : String(e);
+  }
+  const speakers = await readSpeakers(id);
+  if (speakers) {
+    nameLines(lines, speakers.events).forEach((name, i) => {
+      if (name) lines[i]!.name = name;
+    });
   }
   const existing = await readTranscript(id);
   const state = final ?? (await getStatuses())[id]?.state ?? "transcribing";

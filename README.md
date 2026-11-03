@@ -14,6 +14,9 @@ revise from afterwards.
 - **Works with any site.** Google Meet, Zoom's web client, Teams on the web, YouTube
   Live, or a course's own player all work, because Dohra captures the tab and not a
   particular platform.
+- **Transcripts are optional.** With them on, you get a searchable Hinglish transcript
+  that names who spoke in Meet and Teams. With them off, Dohra is a plain video
+  recorder and needs nothing besides the extension.
 
 ## Status
 
@@ -23,7 +26,7 @@ same session format:
 | Stage | What | Status |
 |---|---|---|
 | 1 | Record a tab's audio and video locally, browse and play recordings | Done |
-| 2 | Transcript made on this computer while the class runs (Hindi, English, Hinglish), "me / them" labels, written as Roman-script Hinglish | Done |
+| 2 | Transcript made on this computer while the class runs (Hindi, English, Hinglish), "me / them" labels or the speaker's name from Meet and Teams, written as Roman-script Hinglish | Done |
 | 3 | Plain-English meaning of each line, unfinished sentences completed, summary | Planned |
 | 4 | Live transcript in a side panel, with a hotkey to hide it while screen sharing | Planned |
 | 5 | Desktop apps (e.g. the Zoom app) as well as browser tabs | Planned |
@@ -56,10 +59,14 @@ loads Dohra from that folder every time it starts, so do not delete or move it.
 
 ### 3. Follow the setup page
 
-Dohra opens its setup page by itself. It has three steps, and each is ticked off as it
-is done.
+Dohra opens its setup page by itself. Each step is ticked off as it is done.
 
 **Allow the microphone**, so your own questions are recorded too.
+
+**Do you want transcripts?** Choose **No, just record** to use Dohra as a plain
+recorder: you are done, and the two steps below disappear. Choose **Yes** (the default)
+for transcripts, which need the companion and a speech model. You can change your mind
+later in **Settings → Transcripts**.
 
 **Install the companion.** Transcripts are made by a small program on your computer.
 Nothing is uploaded. The page shows the commands for your system, with a **Copy**
@@ -115,8 +122,9 @@ Every recording is the same, so there is nothing to choose:
 - **audio and video**, at your screen's full resolution — about 1.2 GB per hour at
   1920×1080;
 - **your microphone**;
-- **a transcript**, written as Hinglish: Hindi in Roman script ("theek hai"), English
-  as English.
+- **a transcript**, if **Make a transcript** is on (the default), written as Hinglish:
+  Hindi in Roman script ("theek hai"), English as English. Turn the switch off in the
+  popup to just record.
 
 The popup shows exactly what will be recorded before you start.
 Closing the tab also stops the recording and saves it. You can keep using other tabs
@@ -136,6 +144,12 @@ does the same, whatever the meeting says.
 
 **Transcripts** are made while you record, by the companion, in Roman-script
 Hinglish, so a class can move freely between Hindi and English.
+
+**Who said what.** In Google Meet and Microsoft Teams on the web, Dohra also notes
+who is speaking, from the speaking indicator on each person's tile, and puts that
+name on the transcript's lines instead of **Them**. It only knows people whose tile is
+on screen, so keep the meeting in a grid or sidebar layout rather than one full-screen
+presentation. Lines where nobody visible was speaking stay **Them**.
 The popup shows how far the transcript has got. If the companion is not installed or
 not ready, the class is still recorded, and the popup says the transcript will be
 missing; it can be made later from the recording's page.
@@ -166,14 +180,15 @@ Open a recording to see it with its transcript:
 - **Search** finds a word in either script — `padhenge` finds `पढ़ेंगे`.
 - Transcripts made before 0.4 are in Devanagari; for those, switch between
   **देवनागरी** and **Roman** (a mechanical transliteration).
-- Lines are marked **Me** (your microphone) or **Them** (the tab).
+- Lines are marked **Me** (your microphone), the speaker's name (in Meet and Teams),
+  or **Them** (the tab, when the speaker is not known).
 - **Download transcript (.txt)** saves it as plain text with timestamps.
 
 A recording made while the companion was missing can be transcribed afterwards from
 its page with **Transcribe this recording**.
 
-**Settings** (the gear icon) holds the few things you can change: the speech model,
-a microphone switch for the popup, and the Downloads copy.
+**Settings** (the gear icon) holds the few things you can change: transcripts on or
+off, the speech model, a microphone switch for the popup, and the Downloads copy.
 
 ![Settings](docs/images/08-settings.png)
 
@@ -225,6 +240,10 @@ interrupted recording automatically and keeps everything up to the last few seco
   is being shared" indicator, and Dohra cannot hide it.
 - **Check your course's terms.** Some course platforms forbid recording in their terms
   of use, so check before relying on Dohra for one.
+- **Speaker names depend on the meeting's page.** They are read from Meet's and
+  Teams' web pages, which change without notice; if names stop appearing after such a
+  change, the lines simply say **Them** again. They have not yet been checked in a
+  large real meeting; please report what you see. Zoom and Webex lines stay **Them**.
 - **Transcripts are only as good as the model.** Expect misheard names and terms,
   especially with the small model and in Hindi. The recording is always there to check
   against: click the line.

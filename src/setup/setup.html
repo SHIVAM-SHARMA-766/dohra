@@ -13,8 +13,8 @@
         <span class="logo hero-logo"></span>
         <h1>Welcome to Dohra</h1>
         <p class="lead">
-          Record your online classes on this computer, with a Hinglish transcript you can search later. Nothing is
-          uploaded. Three quick steps, once.
+          Record your online classes and meetings on this computer, with a Hinglish transcript you can search later
+          if you want one. Nothing is uploaded. A few quick steps, once.
         </p>
         <div class="hero-chips">
           <span class="chip"><i data-icon="video"></i>Full-quality video</span>
@@ -31,7 +31,21 @@
           <button id="allow-mic" class="primary" hidden><i data-icon="mic"></i>Allow microphone</button>
         </li>
 
-        <li class="step" id="step-companion">
+        <li class="choice" id="choice">
+          <div>
+            <h2>Do you want transcripts?</h2>
+            <p>
+              Dohra records audio and video by itself. For transcripts it needs a companion program and a speech model
+              (the next two steps). You can change this any time in Settings.
+            </p>
+          </div>
+          <div class="choice-buttons">
+            <button id="want-transcripts" class="small" aria-pressed="true"><i data-icon="text"></i>Yes, make transcripts</button>
+            <button id="record-only" class="small" aria-pressed="false"><i data-icon="video"></i>No, just record</button>
+          </div>
+        </li>
+
+        <li class="step optional" id="step-companion">
           <h2>Install the companion</h2>
           <p>
             A small program (about 40&nbsp;MB) that makes transcripts on this computer with
@@ -49,7 +63,7 @@
           </div>
         </li>
 
-        <li class="step" id="step-model">
+        <li class="step optional" id="step-model">
           <h2>Choose a speech model</h2>
           <p>
             The model turns speech into text. Bigger models understand Hindi and Hinglish better but need more time.
@@ -65,7 +79,8 @@
         <h2>You're all set</h2>
         <p>
           Open your class in a tab and click the Dohra icon, or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.
-          Recordings and transcripts appear in the <a href="library.html">Library</a>.
+          Recordings<span id="done-transcripts"> and transcripts</span> appear in the
+          <a href="library.html">Library</a>.
         </p>
       </section>
     </main>

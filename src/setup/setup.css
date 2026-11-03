@@ -115,6 +115,47 @@ main {
   color: var(--ok);
 }
 
+.choice {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 18px 22px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+
+.choice h2 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+
+.choice p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 440px;
+}
+
+.choice-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.choice-buttons button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Recording only: the transcript steps are not needed. */
+main[data-record-only="true"] .optional {
+  display: none;
+}
+
 #allow-mic {
   margin-top: 8px;
 }

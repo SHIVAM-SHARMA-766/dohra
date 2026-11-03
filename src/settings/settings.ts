@@ -1,6 +1,6 @@
-// Dohra's settings page. Recording format, transcription and language are fixed;
-// what can change is whether the popup offers a microphone switch, the Downloads
-// copy, and the speech model.
+// Dohra's settings page. Recording format and transcript language are fixed; what
+// can change is whether recordings are transcribed, the speech model, whether the
+// popup offers a microphone switch, and the Downloads copy.
 
 import type { Reply } from "../lib/messages";
 import { hydrateIcons } from "../lib/icons";
@@ -11,10 +11,17 @@ import type { CompanionInfo } from "../lib/transcript";
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const micSwitch = $<HTMLInputElement>("mic-switch");
 const autoExport = $<HTMLInputElement>("auto-export");
+const transcribe = $<HTMLInputElement>("transcribe");
 
 async function save(): Promise<void> {
   const settings = await loadSettings();
-  await saveSettings({ ...settings, micSwitchInPopup: micSwitch.checked, autoExport: autoExport.checked });
+  await saveSettings({
+    ...settings,
+    micSwitchInPopup: micSwitch.checked,
+    autoExport: autoExport.checked,
+    transcribe: transcribe.checked,
+  });
+  $<HTMLElement>("model-settings").hidden = !transcribe.checked;
   $<HTMLElement>("saved").textContent = "Saved.";
   setTimeout(() => ($<HTMLElement>("saved").textContent = ""), 1500);
 }
@@ -76,8 +83,11 @@ async function main(): Promise<void> {
   const settings = await loadSettings();
   micSwitch.checked = settings.micSwitchInPopup;
   autoExport.checked = settings.autoExport;
+  transcribe.checked = settings.transcribe;
+  $<HTMLElement>("model-settings").hidden = !settings.transcribe;
   micSwitch.addEventListener("change", () => void save());
   autoExport.addEventListener("change", () => void save());
+  transcribe.addEventListener("change", () => void save());
 
   await showMicPermission();
   void showCompanion();

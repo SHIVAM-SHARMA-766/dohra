@@ -34,10 +34,11 @@ context can change it safely.
 | `src/offscreen/` | The recorder. Captures the tab (and mic), mixes audio, plays the tab back to the speakers, runs `MediaRecorder`, and streams chunks to the storage worker. |
 | `src/worker/` | Storage worker. The only code that writes recording files. |
 | `src/popup/` | Quick start: title, start/pause/stop, live timer, and a summary of what will be recorded. Holds no state of its own. |
-| `src/settings/` | Dohra's settings page: the microphone switch for the popup, the Downloads copy, and the speech models. |
+| `src/settings/` | Dohra's settings page: transcripts on or off, the speech models, the microphone switch for the popup, and the Downloads copy. |
 | `src/library/` | Lists, opens, exports and deletes sessions, shows transcript state, and recovers interrupted recordings. |
 | `src/session/` | One recording: player and transcript, seek-on-click, follow, search, script toggle, `.txt` download, and transcribing a recording after the fact. |
-| `src/setup/` | First-run setup, opened on install: microphone, companion install commands with a live check, and the speech-model choice. |
+| `src/setup/` | First-run setup, opened on install: microphone, transcripts or recording only, then (for transcripts) companion install commands with a live check and the speech-model choice. |
+| `src/content/` | Scripts injected into a meeting tab while it is recorded: the meeting's mute state and who is speaking. |
 | `src/permissions/` | One-time microphone grant (see "Microphone" below). |
 | `src/lib/` | Shared code: settings, the session format, messages, storage helpers, the WebM patcher, the transcript format, Devanagari-to-Roman transliteration, the speech-model list, and the line icons. `src/ui.css` is the design system every page builds on: colour tokens for light and dark, buttons, switches, cards, chips. |
 | `companion/` | The transcription companion: native messaging host, chunking, the Whisper queue, crash-safe session store, model downloads, and the installer. See "Transcription" below. |
@@ -92,6 +93,8 @@ sessions/<id>/
   raw.webm         while recording; deleted once finalized
   recording.webm   the finished file
   session.json     metadata, rewritten on every chunk
+  transcript.json  once transcribed
+  speakers.json    who was speaking when, for recordings of Meet or Teams
 ```
 
 `<id>` is `YYYY-MM-DD_HHMMSS_<title-slug>`, in local time, so it sorts
@@ -402,7 +405,7 @@ Since 0.3, the format is not a choice:
 - **Audio and video.** The tab is captured with its size limited to the screen's
   resolution in device pixels. In practice that is the tab's own size, at full detail.
 - **The microphone**, unless the settings allow a per-recording switch.
-- **A transcript**, with language `auto`.
+- **A transcript**, in Hinglish, unless `transcribe` is off.
 
 Older recordings may be audio-only or carry a quality such as "720p". The session
 format still describes both.
@@ -424,8 +427,11 @@ Settings, stored in `chrome.storage.local` and edited on `settings.html`:
 | `micSwitchInPopup` | off (default): the microphone is always recorded and the popup does not mention it. On: the popup shows "Include my microphone". |
 | `mic` | the popup switch's state; ignored while `micSwitchInPopup` is off |
 | `autoExport` | on (default) or off: copy recordings and transcripts to Downloads |
+| `transcribe` | on (default) or off. Off, Dohra is a plain recorder: the background never contacts the companion for a recording, and no transcript or "not transcribed" state is written. A transcript can still be made later from the recording's page. Switchable in the popup, Settings, and setup ("No, just record"). |
 
-Settings from earlier versions (mode, quality, transcribe, language) are ignored.
+Settings from earlier versions (mode, quality, language) are ignored. `transcribe` was
+removed in 0.3 and came back in 0.6 with a new meaning, so an old stored value is
+honoured.
 
 The microphone needs permission once. While it is required and not granted, the
 popup's Start button is disabled and links to the permission page.
@@ -456,6 +462,46 @@ The script runs only on Meet, Teams, Zoom and Webex (`isMeetingHost`). Elsewhere
 another language, or a redesign that changes the labels, leaves the state unknown, and
 then only Dohra's own Mute applies. The e2e test serves a Meet-like page at
 `meet.google.com`, via `--host-resolver-rules`, to check the whole path.
+
+### Who is speaking
+
+Dohra records the meeting's mixed audio, which cannot tell voices apart, and the
+companion does no speaker separation. The meeting page can: each participant's tile
+shows a speaking indicator. While a Meet or Teams tab is recorded, the background also
+injects [content/meeting-speakers.ts](src/content/meeting-speakers.ts) (same
+`chrome.scripting` + `activeTab` path as the mute watcher; Zoom and Webex are not
+read).
+
+- **Finding tiles.** Meet: the outermost `[data-participant-id]` elements. Teams: the
+  nearest ancestor of each `[data-tid="voice-level-stream-outline"]` that holds a name.
+  These attributes have stayed stable across versions; class names have not. Elements
+  in the participants list or a dialog, and tiles smaller than 40×30 px, are skipped.
+- **Names.** `pickName` in [lib/meeting-speakers.ts](src/lib/meeting-speakers.ts) takes
+  the first text in the tile that reads like a name (preferring `.notranslate`,
+  `data-self-name` and Teams' name `data-tid`s), skipping icon ligatures such as
+  `more_vert`, and trims "(Presenting)", "(Host)" and "(You)". "(You)" or "You" marks
+  your own tile.
+- **Speaking.** The generated class names of the indicator change between versions,
+  so they are not named. Instead a MutationObserver counts `class`/`style` changes
+  inside each tile: an animating indicator changes constantly, a still video tile
+  does not. A tile with at least 2 changes in the last 700 ms is speaking, held for
+  600 ms more to bridge short gaps (`ActivityTracker`). Sampled every 250 ms; only
+  changes are reported, with the number of tiles found.
+- **Timeline.** The background stamps each report with the recorded time
+  (`liveDuration`, which excludes pauses, like the transcript's audio) and keeps the
+  list in memory, writing `speakers.json` a second after each change and once more as
+  the recording stops ([background/speakers.ts](src/background/speakers.ts)).
+- **Naming lines.** Every time the background rewrites `transcript.json`, `nameLines`
+  gives each `them` line the name that was speaking for most of it (±0.5 s), ignoring
+  your own tile since your voice is not in the tab's audio. `me` lines are never
+  named. In a transcript made later from the mixed recording, your tile counts and is
+  called "Me". The name is stored as `name` on the line; pages show it instead of
+  "Them" (`speakerLabel`).
+
+`tiles` in each event says whether the page could be read at all: a run of `0` after a
+meeting redesign means the selectors need updating, and lines simply fall back to
+"Them". The e2e meeting page has three tiles, one with an animating indicator, and the
+test checks both the timeline and the names on the transcript's lines.
 
 ## Testing
 
@@ -525,6 +571,10 @@ These need a manual check.
 - Chromium browsers only. Firefox has no equivalent of `tabCapture` for extensions.
 - Duration is measured with `performance.now()`. If the laptop sleeps mid-recording,
   the stored Duration may not match the media exactly. The file still plays.
+- Speaker names come only from tiles on screen. Someone speaking while hidden (a
+  large meeting showing a few tiles, or a full-screen presentation) is not named,
+  and two people talking at once go to whoever spoke longer in that line. Not yet
+  checked against a real Meet or Teams meeting.
 - Without headphones, the microphone also records the class from the speakers. Echo
   cancellation reduces this but does not remove it. The transcript then repeats
   "Them" lines as "Me".

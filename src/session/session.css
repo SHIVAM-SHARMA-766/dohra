@@ -222,6 +222,21 @@ h1 {
   color: var(--muted);
 }
 
+/* A name from the meeting: normal case, coloured per person. */
+.line .speaker.named {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11.5px;
+  background: hsl(var(--hue) 70% 50% / 0.14);
+  color: hsl(var(--hue) 55% 38%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .line .speaker.named {
+    color: hsl(var(--hue) 70% 72%);
+  }
+}
+
 .line .speaker.me {
   background: var(--accent-soft);
   color: var(--accent);

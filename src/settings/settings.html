@@ -34,7 +34,10 @@
           <li><i data-icon="mic"></i><span><strong>Your microphone</strong>, unless you allow switching it off below</span></li>
           <li>
             <i data-icon="text"></i>
-            <span><strong>A transcript in Hinglish</strong>: Hindi in Roman script ("theek hai"), English as English</span>
+            <span
+              ><strong>A transcript in Hinglish</strong>, if you want one: Hindi in Roman script ("theek hai"), English as
+              English, with names from the meeting</span
+            >
           </li>
           <li><i data-icon="shield"></i><span><strong>Private</strong>: everything stays on this computer</span></li>
         </ul>
@@ -44,12 +47,23 @@
         <div class="section-title">
           <span class="section-icon"><i data-icon="cpu"></i></span>
           <div>
-            <h2>Speech model</h2>
-            <p>Used for every transcript. A switch applies to everything not transcribed yet, even a class in progress.</p>
+            <h2>Transcripts</h2>
+            <p>Made on this computer by the companion. Turn them off to use Dohra as a plain recorder.</p>
           </div>
         </div>
-        <p id="companion" class="status-dot" role="status">Checking…</p>
-        <div id="models" class="models"></div>
+        <label class="switch-row">
+          <span>
+            <span class="label">Make a transcript of every recording</span>
+            <span class="sub">Off: Dohra only records. You can still make a transcript later from a recording's page.</span>
+          </span>
+          <input id="transcribe" type="checkbox" class="switch" />
+        </label>
+        <div id="model-settings">
+          <h3 class="subhead">Speech model</h3>
+          <p class="hint">A switch applies to everything not transcribed yet, even a class in progress.</p>
+          <p id="companion" class="status-dot" role="status">Checking…</p>
+          <div id="models" class="models"></div>
+        </div>
       </section>
 
       <section class="card">
