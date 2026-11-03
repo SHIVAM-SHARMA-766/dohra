@@ -27,15 +27,25 @@ main {
   content: " · ";
 }
 
+/* Search and Import stay on one line: the search box gives up width, the button
+   never wraps. On a narrow window both move under the title, full width. */
 .head-tools {
+  flex: 1 1 360px;
   display: flex;
   gap: 10px;
   align-items: center;
-  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .head-tools .search {
-  width: min(280px, 100%);
+  flex: 0 1 280px;
+  min-width: 140px;
+}
+
+.head-tools #import {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .import-progress {
@@ -193,6 +203,12 @@ main {
 @media (max-width: 640px) {
   main {
     padding: 20px 16px 40px;
+  }
+  .head-tools {
+    flex-basis: 100%;
+  }
+  .head-tools .search {
+    flex: 1 1 auto;
   }
   .item {
     grid-template-columns: auto minmax(0, 1fr);
