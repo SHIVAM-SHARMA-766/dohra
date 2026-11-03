@@ -24,6 +24,7 @@ import { sessionId, type SessionMeta } from "../lib/session";
 import { loadSettings, micEnabled } from "../lib/settings";
 import * as speakers from "./speakers";
 import * as transcriber from "./transcriber";
+import * as updater from "./updater";
 
 const OFFSCREEN_URL = "offscreen.html";
 
@@ -247,6 +248,10 @@ async function handleRequest(msg: BackgroundRequest, sender: chrome.runtime.Mess
       return updateMic({ meeting: msg.muted }, sender.tab?.id ?? -1);
     case "meeting-speakers":
       return noteSpeakers(msg.speaking, msg.tiles, sender.tab?.id ?? -1);
+    case "update-check":
+      return updater.check();
+    case "update-apply":
+      return updater.apply(!!(await getActive()));
     case "companion-status":
       return transcriber.checkCompanion();
     case "model":
@@ -359,9 +364,12 @@ chrome.runtime.onMessage.addListener((msg: BackgroundRequest | RecorderEvent, se
 });
 
 // First install: walk through setup — microphone, companion, speech model.
+// After updating itself from Settings: say so.
 chrome.runtime.onInstalled.addListener(({ reason }) => {
   if (reason === chrome.runtime.OnInstalledReason.INSTALL) {
     void chrome.tabs.create({ url: chrome.runtime.getURL("setup.html") });
+  } else if (reason === chrome.runtime.OnInstalledReason.UPDATE) {
+    void updater.announceIfUpdated().catch(() => {});
   }
 });
 
@@ -383,4 +391,5 @@ void (async () => {
   if (active && !(await hasOffscreen())) await setActive(null);
   else await updateBadge(active);
   await transcriber.resumeUnfinished().catch(() => {});
+  await updater.checkIfDue();
 })();

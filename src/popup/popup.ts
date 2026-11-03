@@ -15,6 +15,7 @@ import { hydrateIcons, icon } from "../lib/icons";
 import { formatBytes, formatDuration } from "../lib/session";
 import { loadSettings, micEnabled, saveSettings, type Settings } from "../lib/settings";
 import { TRANSCRIPTS_KEY, type CompanionInfo, type TranscriptStatus } from "../lib/transcript";
+import { UPDATE_KEY, type UpdateStatus } from "../lib/update";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -284,6 +285,7 @@ async function main(): Promise<void> {
   for (const [id, page] of [
     ["open-library", "library.html"],
     ["open-settings", "settings.html"],
+    ["open-update", "settings.html"],
     ["allow-mic", "permissions.html"],
   ] as const) {
     $<HTMLAnchorElement>(id).addEventListener("click", (e) => {
@@ -293,4 +295,14 @@ async function main(): Promise<void> {
   }
 }
 
+/** A newer release, as the background's daily check found it. */
+async function showUpdate(): Promise<void> {
+  const { [UPDATE_KEY]: stored } = await chrome.storage.local.get(UPDATE_KEY);
+  const u = stored as UpdateStatus | undefined;
+  if (!u?.available || u.current !== chrome.runtime.getManifest().version) return;
+  $<HTMLElement>("update-text").textContent = `Dohra ${u.latest} is available.`;
+  $<HTMLElement>("update").hidden = false;
+}
+
 void main();
+void showUpdate();

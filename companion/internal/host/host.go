@@ -26,6 +26,8 @@ import (
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/engine"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/models"
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/nm"
+	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/paths"
+	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/update"
 )
 
 type Request struct {
@@ -80,6 +82,9 @@ type Host struct {
 	StartEngine func(ctx context.Context, cfg config.Config) *engine.Engine
 	// Models handles model downloads; nil turns those requests off.
 	Models *models.Manager
+	// BrowserDirs are searched for where Dohra is loaded from; nil means the
+	// browsers' usual places.
+	BrowserDirs []string
 
 	mu     sync.Mutex
 	ctx    context.Context
@@ -199,6 +204,10 @@ func (h *Host) handle(ctx context.Context, req Request) (any, error) {
 		return h.Hello(), nil
 	case "models", "model-install", "model-cancel", "model-remove", "model-use":
 		return h.handleModels(ctx, req)
+	case "update-check":
+		return h.checkUpdate(ctx)
+	case "update-apply":
+		return h.applyUpdate(ctx)
 	}
 	e := h.Engine()
 	if e == nil {
@@ -255,6 +264,48 @@ func (h *Host) handleModels(ctx context.Context, req Request) (any, error) {
 		return nil, err
 	}
 	return h.Hello(), nil
+}
+
+// UpdateInfo answers "update-check": the newest release, the companion's own
+// version, and the extension folders an update would rewrite.
+type UpdateInfo struct {
+	Latest    string         `json:"latest"`
+	URL       string         `json:"url"`
+	Notes     string         `json:"notes"`
+	Companion string         `json:"companion"`
+	Places    []update.Place `json:"places"`
+}
+
+func (h *Host) browserDirs() []string {
+	if h.BrowserDirs != nil {
+		return h.BrowserDirs
+	}
+	return paths.BrowserDataDirs()
+}
+
+func (h *Host) checkUpdate(ctx context.Context) (UpdateInfo, error) {
+	rel, err := update.Latest(ctx)
+	if err != nil {
+		return UpdateInfo{}, err
+	}
+	places := update.FindExtension(h.browserDirs())
+	h.Log.Printf("update check: %s available; Dohra loaded from %+v", rel.Version, places)
+	return UpdateInfo{
+		Latest: rel.Version, URL: rel.URL, Notes: rel.Notes,
+		Companion: h.Version, Places: places,
+	}, nil
+}
+
+// applyUpdate rewrites the extension's folders and replaces the companion. It
+// blocks this connection until done (a few MB, usually seconds); the extension
+// reloads itself afterwards.
+func (h *Host) applyUpdate(ctx context.Context) (update.Result, error) {
+	rel, err := update.Latest(ctx)
+	if err != nil {
+		return update.Result{}, err
+	}
+	places := update.FindExtension(h.browserDirs())
+	return update.Apply(context.WithoutCancel(ctx), rel, places, h.Version, h.Log.Printf)
 }
 
 func DecodePCM(b64 string) ([]int16, error) {

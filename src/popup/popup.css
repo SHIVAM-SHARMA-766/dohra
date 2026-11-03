@@ -216,3 +216,8 @@ body {
   gap: 8px;
   margin-top: 12px;
 }
+
+.banner.info {
+  background: var(--accent-soft);
+  color: var(--accent);
+}

@@ -84,14 +84,14 @@ function connect(): chrome.runtime.Port {
   return p;
 }
 
-function request<T>(msg: Record<string, unknown>): Promise<T> {
+function request<T>(msg: Record<string, unknown>, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const p = connect();
   const id = nextId++;
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error(`companion did not answer "${String(msg.type)}"`));
-    }, REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
     pending.set(id, {
       resolve: (v) => {
         clearTimeout(timer);
@@ -214,6 +214,19 @@ export async function checkCompanion(): Promise<CompanionInfo> {
   }
   scheduleDisconnect();
   return info;
+}
+
+/**
+ * Asks the companion about updates ("update-check") or to apply one
+ * ("update-apply", which downloads and may take minutes). Throws if it is not
+ * installed or too old to know these requests.
+ */
+export async function companionUpdate<T>(type: "update-check" | "update-apply"): Promise<T> {
+  try {
+    return await request<T>({ type }, type === "update-apply" ? 15 * 60_000 : 60_000);
+  } finally {
+    scheduleDisconnect();
+  }
 }
 
 /** Downloads, cancels, removes or switches to a speech model. */

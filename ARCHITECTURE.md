@@ -34,7 +34,7 @@ context can change it safely.
 | `src/offscreen/` | The recorder. Captures the tab (and mic), mixes audio, plays the tab back to the speakers, runs `MediaRecorder`, and streams chunks to the storage worker. |
 | `src/worker/` | Storage worker. The only code that writes recording files. |
 | `src/popup/` | Quick start: title, start/pause/stop, live timer, and a summary of what will be recorded. Holds no state of its own. |
-| `src/settings/` | Dohra's settings page: transcripts on or off, the speech models, the microphone switch for the popup, and the Downloads copy. |
+| `src/settings/` | Dohra's settings page: transcripts on or off, the speech models, the microphone switch for the popup, the Downloads copy, and updates. |
 | `src/library/` | Lists, opens, exports and deletes sessions, shows transcript state, and recovers interrupted recordings. |
 | `src/session/` | One recording: player and transcript, seek-on-click, follow, search, script toggle, `.txt` download, and transcribing a recording after the fact. |
 | `src/setup/` | First-run setup, opened on install: microphone, transcripts or recording only, then (for transcripts) companion install commands with a live check and the speech-model choice. |
@@ -305,6 +305,8 @@ fire-and-forget; an error with it comes back as an `error` event.
 | `model-install {model}` | Start downloading a model in the background; replies at once |
 | `model-cancel {model}` | Stop a download, keeping what arrived |
 | `model-use {model}` | Make an installed model the active one |
+| `update-check` | The latest release (version, page, notes), the companion's version, and the folders Dohra is loaded from, each with a reason if it cannot be updated |
+| `update-apply` | Update those folders and the companion itself; replies when done (see "Updates") |
 | `model-remove {model}` | Delete a model that is not active |
 
 The model requests all reply with a fresh `hello`.
@@ -502,6 +504,46 @@ read).
 meeting redesign means the selectors need updating, and lines simply fall back to
 "Them". The e2e meeting page has three tiles, one with an animating indicator, and the
 test checks both the timeline and the names on the transcript's lines.
+
+## Updates
+
+Chrome never updates an extension loaded with **Load unpacked**; it only reads the
+folder again when the extension reloads. The companion runs as the user, so it can
+rewrite that folder ([companion/internal/update](companion/internal/update/update.go)).
+
+1. **Check.** Settings sends `update-check` to the background
+   ([background/updater.ts](src/background/updater.ts)), which asks the companion. The
+   companion reads GitHub's latest release and its `SHA256SUMS`, and finds where Dohra
+   is loaded from: every profile of Chrome, Chromium, Brave and Edge
+   (`paths.BrowserDataDirs`), in `Preferences` and `Secure Preferences`, entry
+   `extensions.settings.<Dohra's ID>` with `location` 4 (unpacked) and an absolute
+   `path`. A folder whose `manifest.json` is not Dohra's, or that sits in a checkout
+   (`../package.json` and `../src/manifest.json`), is reported with a reason and left
+   alone. Without a companion that can update (none, or one before 0.6), the
+   background reads the release from GitHub itself, so Dohra can still say that an
+   update exists and how to apply it by hand. The background repeats the check once a
+   day, quietly; the popup shows a banner when one is found.
+2. **Apply.** `update-apply` is refused while recording, since a reload ends the
+   recording. The companion downloads `dohra-extension.zip` (checked against
+   `SHA256SUMS`, resumable like model downloads), unpacks it beside the folder, checks
+   that it is Dohra at the release's version, and writes each file over the old one
+   (write to a temporary name, then rename). Files are never deleted: the folder is
+   the user's and may hold other things. Then, if the release is newer than itself, it
+   downloads its own binary for this platform, renames the running one aside (Windows
+   cannot overwrite a running `.exe`), moves the new one in, and runs its `install
+   --no-register`, which fetches any newer whisper.cpp it pins. The old process keeps
+   running until the browser disconnects.
+3. **Reload.** The background stores `updatedTo` and calls `chrome.runtime.reload()`.
+   Chrome reads the new files; `onInstalled` (reason `update`) reopens Settings, which
+   says Dohra was updated and checks again. Chrome re-checks Developer mode on reload
+   and disables an unpacked extension without it (`DISABLE_UNSUPPORTED_DEVELOPER_EXTENSION`),
+   so the README asks to leave it on.
+
+A version that is not numeric (`dev`, a companion built from source) is never
+replaced. `DOHRA_UPDATE_URL` and `DOHRA_BROWSER_DIRS` point the companion at a test
+release and profile; `npm run e2e:update` uses them to update a 0.0.1 install to
+0.0.2 through the real Settings page and checks the folder, the reload and the
+companion.
 
 ## Testing
 

@@ -3,6 +3,7 @@ dist/
 release/
 *.zip
 .e2e/
+.e2e-update/
 
 # companion builds
 companion/dohra-companion

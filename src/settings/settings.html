@@ -100,6 +100,23 @@
         </label>
       </section>
 
+      <section class="card" id="updates">
+        <div class="section-title">
+          <span class="section-icon"><i data-icon="download"></i></span>
+          <div>
+            <h2>Updates</h2>
+            <p id="versions"></p>
+          </div>
+        </div>
+        <p id="update-status" class="status-dot" role="status"></p>
+        <p id="update-why" class="hint" hidden></p>
+        <div class="update-actions">
+          <button id="update-check" class="small">Check for updates</button>
+          <button id="update-apply" class="primary small" hidden></button>
+          <a id="update-notes" href="#" target="_blank" rel="noreferrer" hidden>What's new</a>
+        </div>
+      </section>
+
       <p id="saved" class="toast" aria-live="polite"></p>
     </main>
 

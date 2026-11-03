@@ -14,6 +14,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
     "test": "vitest run",
     "e2e": "xvfb-run -a -s \"-screen 0 1920x1080x24\" node scripts/e2e.mjs",
+    "e2e:update": "xvfb-run -a -s \"-screen 0 1920x1080x24\" node scripts/e2e-update.mjs",
     "icons": "sh scripts/icons.sh",
     "package": "node scripts/build.mjs && node scripts/package.mjs"
   },

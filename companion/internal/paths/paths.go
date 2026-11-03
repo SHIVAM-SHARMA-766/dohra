@@ -49,3 +49,45 @@ func Exe(name string) string {
 	}
 	return name
 }
+
+// BrowserDataDirs are the per-user data directories of the Chromium browsers
+// Dohra supports, whether or not they exist: Chrome, Chromium, Brave, Edge.
+// DOHRA_BROWSER_DIRS (a path list) replaces them, which tests use.
+func BrowserDataDirs() []string {
+	if dirs := os.Getenv("DOHRA_BROWSER_DIRS"); dirs != "" {
+		return filepath.SplitList(dirs)
+	}
+	home, _ := os.UserHomeDir()
+	switch runtime.GOOS {
+	case "windows":
+		base := os.Getenv("LOCALAPPDATA")
+		if base == "" {
+			base = filepath.Join(home, "AppData", "Local")
+		}
+		return []string{
+			filepath.Join(base, "Google", "Chrome", "User Data"),
+			filepath.Join(base, "Chromium", "User Data"),
+			filepath.Join(base, "BraveSoftware", "Brave-Browser", "User Data"),
+			filepath.Join(base, "Microsoft", "Edge", "User Data"),
+		}
+	case "darwin":
+		base := filepath.Join(home, "Library", "Application Support")
+		return []string{
+			filepath.Join(base, "Google", "Chrome"),
+			filepath.Join(base, "Chromium"),
+			filepath.Join(base, "BraveSoftware", "Brave-Browser"),
+			filepath.Join(base, "Microsoft Edge"),
+		}
+	default:
+		base := os.Getenv("XDG_CONFIG_HOME")
+		if base == "" {
+			base = filepath.Join(home, ".config")
+		}
+		return []string{
+			filepath.Join(base, "google-chrome"),
+			filepath.Join(base, "chromium"),
+			filepath.Join(base, "BraveSoftware", "Brave-Browser"),
+			filepath.Join(base, "microsoft-edge"),
+		}
+	}
+}

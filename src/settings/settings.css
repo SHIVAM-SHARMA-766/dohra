@@ -95,3 +95,25 @@ section.card {
     padding: 16px;
   }
 }
+
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+#update-status:empty {
+  display: none;
+}
+
+#update-status[data-tone="ok"]::before {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-soft);
+}
+
+#update-status[data-tone="new"]::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}

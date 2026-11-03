@@ -188,7 +188,8 @@ A recording made while the companion was missing can be transcribed afterwards f
 its page with **Transcribe this recording**.
 
 **Settings** (the gear icon) holds the few things you can change: transcripts on or
-off, the speech model, a microphone switch for the popup, and the Downloads copy.
+off, the speech model, a microphone switch for the popup, and the Downloads copy. It
+also checks for and installs updates (see [Update or uninstall](#update-or-uninstall)).
 
 ![Settings](docs/images/08-settings.png)
 
@@ -214,11 +215,19 @@ interrupted recording automatically and keeps everything up to the last few seco
 
 ### Update or uninstall
 
-- **Update the extension:** download the new
+- **Update from Settings (0.6 and later, with the companion):** Dohra checks for a new
+  release once a day; the popup says when there is one. In **Settings → Updates**,
+  press **Check for updates**, then **Update to …**. The companion downloads the new
+  release from GitHub, checks every file against the release's SHA-256 sums, writes
+  the new extension into the folder you loaded Dohra from, updates itself, and Dohra
+  restarts on its own. Recordings are kept. Updating waits until a recording is
+  finished. Keep **Developer mode** on in `chrome://extensions`: Chrome disables an
+  unpacked extension that restarts without it.
+- **Update by hand** (without the companion, or from a version before 0.6): download
+  the new
   [dohra-extension.zip](https://github.com/SHIVAM-SHARMA-766/dohra/releases/latest/download/dohra-extension.zip),
   unzip it over the same folder, and press the reload icon on Dohra's card in
-  `chrome://extensions`. Recordings are kept.
-- **Update the companion:** run the same commands as in step 3 again.
+  `chrome://extensions`. To update the companion, run the commands from step 3 again.
 - **Uninstall:** remove Dohra in `chrome://extensions`, then run
   `~/.local/share/dohra/bin/dohra-companion uninstall --purge` (Linux),
   `~/Library/Application\ Support/Dohra/bin/dohra-companion uninstall --purge` (macOS) or
@@ -240,6 +249,9 @@ interrupted recording automatically and keeps everything up to the last few seco
   is being shared" indicator, and Dohra cannot hide it.
 - **Check your course's terms.** Some course platforms forbid recording in their terms
   of use, so check before relying on Dohra for one.
+- **Updating from Settings finds Dohra through the browser's profile.** It works for
+  Chrome, Chromium, Brave and Edge in their usual places. A browser installed as a
+  Snap or Flatpak, or a folder under a development checkout, is updated by hand.
 - **Speaker names depend on the meeting's page.** They are read from Meet's and
   Teams' web pages, which change without notice; if names stop appearing after such a
   change, the lines simply say **Them** again. They have not yet been checked in a

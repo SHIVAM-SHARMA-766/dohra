@@ -32,6 +32,9 @@ export type BackgroundRequest =
   | { target: "background"; type: "meeting-speakers"; speaking: SpeakingTile[]; tiles: number }
   /** Pages ask for the companion's state (replies with CompanionInfo). */
   | { target: "background"; type: "companion-status" }
+  /** Settings checks for a newer release (replies with UpdateStatus), or applies it (UpdateResult). */
+  | { target: "background"; type: "update-check" }
+  | { target: "background"; type: "update-apply" }
   /** Settings and setup manage speech models (replies with CompanionInfo). */
   | { target: "background"; type: "model"; action: ModelAction; model: string }
   /** Transcribing a finished recording: the page decodes it and streams the audio. */

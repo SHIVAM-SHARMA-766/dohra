@@ -51,6 +51,10 @@ jobs:
         env:
           CHROME: ${{ steps.chromium.outputs.chrome-path }}
           REQUIRE_GSTREAMER: "1"
+      # Updating from Settings, against a local stand-in for GitHub's releases.
+      - run: npm run e2e:update
+        env:
+          CHROME: ${{ steps.chromium.outputs.chrome-path }}
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
