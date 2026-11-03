@@ -271,7 +271,6 @@ func (h *Host) handleModels(ctx context.Context, req Request) (any, error) {
 type UpdateInfo struct {
 	Latest    string         `json:"latest"`
 	URL       string         `json:"url"`
-	Notes     string         `json:"notes"`
 	Companion string         `json:"companion"`
 	Places    []update.Place `json:"places"`
 }
@@ -291,7 +290,7 @@ func (h *Host) checkUpdate(ctx context.Context) (UpdateInfo, error) {
 	places := update.FindExtension(h.browserDirs())
 	h.Log.Printf("update check: %s available; Dohra loaded from %+v", rel.Version, places)
 	return UpdateInfo{
-		Latest: rel.Version, URL: rel.URL, Notes: rel.Notes,
+		Latest: rel.Version, URL: rel.URL,
 		Companion: h.Version, Places: places,
 	}, nil
 }

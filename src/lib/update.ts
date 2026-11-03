@@ -21,7 +21,6 @@ export interface UpdateStatus {
   latest: string;
   available: boolean;
   url: string;
-  notes: string;
   /** The companion's version, or null without a companion that can update. */
   companion: string | null;
   /** Where the update would go; empty without the companion. */

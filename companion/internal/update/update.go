@@ -35,9 +35,11 @@ import (
 	"github.com/SHIVAM-SHARMA-766/dohra/companion/internal/setup"
 )
 
-// LatestURL is the GitHub API address of the newest release. Tests replace it,
-// and DOHRA_UPDATE_URL does for the end-to-end test.
-var LatestURL = cmp.Or(os.Getenv("DOHRA_UPDATE_URL"), "https://api.github.com/repos/SHIVAM-SHARMA-766/dohra/releases/latest")
+// ReleasesURL is the repository's releases on github.com. The REST API is not
+// used: it allows 60 requests an hour per IP address without logging in, which a
+// college or office network shares. github.com's own pages and downloads have no
+// such limit. DOHRA_UPDATE_URL points it at a stand-in for the end-to-end test.
+var ReleasesURL = cmp.Or(os.Getenv("DOHRA_UPDATE_URL"), "https://github.com/SHIVAM-SHARMA-766/dohra/releases")
 
 const (
 	ExtensionAsset = "dohra-extension.zip"
@@ -50,14 +52,7 @@ const (
 type Release struct {
 	Version string            `json:"version"` // "0.6.1", without the v
 	URL     string            `json:"url"`     // the release's page
-	Notes   string            `json:"notes"`
-	assets  map[string]asset  // by file name
-	sums    map[string]string // file name -> SHA-256
-}
-
-type asset struct {
-	URL  string
-	Size int64
+	sums    map[string]string // file name -> SHA-256, from the release's SHA256SUMS
 }
 
 // CompanionAsset is this platform's companion binary in a release.
@@ -69,38 +64,39 @@ func CompanionAsset() string {
 	return name
 }
 
-// Latest asks GitHub for the newest release and reads its checksums.
+// noRedirect reads a redirect instead of following it.
+var noRedirect = &http.Client{
+	Timeout:       30 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
+
+// Latest finds the newest release and reads its checksums. github.com answers
+// /releases/latest with a redirect to /releases/tag/v<version>.
 func Latest(ctx context.Context) (Release, error) {
-	var body struct {
-		Tag    string `json:"tag_name"`
-		URL    string `json:"html_url"`
-		Notes  string `json:"body"`
-		Assets []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
-			Size int64  `json:"size"`
-		} `json:"assets"`
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ReleasesURL+"/latest", nil)
+	if err != nil {
+		return Release{}, err
 	}
-	if err := getJSON(ctx, LatestURL, &body); err != nil {
+	req.Header.Set("User-Agent", "dohra-companion")
+	resp, err := noRedirect.Do(req)
+	if err != nil {
 		return Release{}, fmt.Errorf("could not reach GitHub to check for updates: %w", err)
 	}
+	resp.Body.Close()
+	loc := resp.Header.Get("Location")
+	_, tag, found := strings.Cut(loc, "/releases/tag/")
+	if resp.StatusCode/100 != 3 || !found || tag == "" {
+		return Release{}, fmt.Errorf("could not read the latest release from GitHub (%s)", resp.Status)
+	}
+	tag = strings.Trim(tag, "/")
 	rel := Release{
-		Version: strings.TrimPrefix(body.Tag, "v"),
-		URL:     body.URL,
-		Notes:   body.Notes,
-		assets:  map[string]asset{},
+		Version: strings.TrimPrefix(tag, "v"),
+		URL:     ReleasesURL + "/tag/" + tag,
 		sums:    map[string]string{},
 	}
-	for _, a := range body.Assets {
-		rel.assets[a.Name] = asset{URL: a.URL, Size: a.Size}
-	}
-	sums, ok := rel.assets[SumsAsset]
-	if !ok {
-		return Release{}, fmt.Errorf("release %s has no %s", body.Tag, SumsAsset)
-	}
-	text, err := get(ctx, sums.URL, 1<<20)
+	text, err := get(ctx, rel.download(SumsAsset), 1<<20)
 	if err != nil {
-		return Release{}, fmt.Errorf("read %s: %w", SumsAsset, err)
+		return Release{}, fmt.Errorf("read %s of %s: %w", SumsAsset, tag, err)
 	}
 	sc := bufio.NewScanner(strings.NewReader(string(text)))
 	for sc.Scan() {
@@ -113,17 +109,18 @@ func Latest(ctx context.Context) (Release, error) {
 	return rel, nil
 }
 
-// file is a release file as a pinned download, or an error if it is missing or unlisted.
+func (r Release) download(name string) string {
+	return ReleasesURL + "/download/v" + r.Version + "/" + name
+}
+
+// file is a release file as a pinned download, or an error if SHA256SUMS does
+// not list it. The size is unknown, so an interrupted download starts over.
 func (r Release) file(name string) (config.Asset, error) {
-	a, ok := r.assets[name]
+	sum, ok := r.sums[name]
 	if !ok {
 		return config.Asset{}, fmt.Errorf("release %s has no %s", r.Version, name)
 	}
-	sum, ok := r.sums[name]
-	if !ok {
-		return config.Asset{}, fmt.Errorf("%s is not in the release's %s", name, SumsAsset)
-	}
-	return config.Asset{URL: a.URL, SHA256: sum, Size: a.Size}, nil
+	return config.Asset{URL: r.download(name), SHA256: sum}, nil
 }
 
 // Newer reports whether version a is newer than b ("0.10.0" > "0.9.2"). Either
@@ -391,7 +388,6 @@ func get(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "dohra-companion")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -402,12 +398,4 @@ func get(ctx context.Context, url string, limit int64) ([]byte, error) {
 		return nil, fmt.Errorf("%s: %s", url, resp.Status)
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, limit))
-}
-
-func getJSON(ctx context.Context, url string, v any) error {
-	data, err := get(ctx, url, 4<<20)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, v)
 }

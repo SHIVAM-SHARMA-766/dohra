@@ -11,7 +11,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -57,23 +57,16 @@ function buildCompanion(out, version) {
 
 const sha256 = async (file) => createHash("sha256").update(await readFile(file)).digest("hex");
 
-/** A stand-in for GitHub's latest-release API and download links. */
+/** A stand-in for github.com's releases: /latest redirects to the tag, files are under /download/<tag>/. */
 async function serveRelease(files) {
   const sums = (await Promise.all(Object.entries(files).map(async ([name, path]) => `${await sha256(path)}  ${name}`))).join("\n") + "\n";
+  const prefix = `/releases/download/v${NEW}/`;
   const server = http.createServer(async (req, res) => {
-    const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === "/latest") {
-      const assets = [
-        ...(await Promise.all(Object.entries(files).map(async ([name, path]) => ({
-          name, browser_download_url: `${base}/dl/${name}`, size: (await stat(path)).size,
-        })))),
-        { name: "SHA256SUMS", browser_download_url: `${base}/dl/SHA256SUMS`, size: sums.length },
-      ];
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ tag_name: `v${NEW}`, html_url: `${base}/release`, body: "Test release", assets }));
+    if (req.url === "/releases/latest") {
+      res.writeHead(302, { location: `http://127.0.0.1:${server.address().port}/releases/tag/v${NEW}` }).end();
       return;
     }
-    const name = decodeURIComponent(req.url.replace("/dl/", ""));
+    const name = req.url.startsWith(prefix) ? decodeURIComponent(req.url.slice(prefix.length)) : "";
     if (name === "SHA256SUMS") return res.end(sums);
     if (files[name]) return res.end(await readFile(files[name]));
     res.writeHead(404).end();
@@ -99,7 +92,7 @@ async function main() {
   const env = {
     ...process.env,
     DOHRA_HOME: home,
-    DOHRA_UPDATE_URL: `http://127.0.0.1:${server.address().port}/latest`,
+    DOHRA_UPDATE_URL: `http://127.0.0.1:${server.address().port}/releases`,
     // Look for the extension in the test profile only, not the browsers of the machine.
     DOHRA_BROWSER_DIRS: profile,
   };

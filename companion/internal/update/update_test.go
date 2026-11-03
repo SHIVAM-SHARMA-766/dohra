@@ -59,8 +59,9 @@ func extensionZip(t *testing.T, version string, files map[string]string) []byte 
 	return buf.Bytes()
 }
 
-// fakeGitHub serves a latest release holding the given extension zip. A corrupt
-// zip is listed with the checksum of the good one.
+// fakeGitHub serves github.com's releases as Dohra reads them: /latest
+// redirects to the tag, files are under /download/<tag>/. A corrupt zip is
+// listed with the checksum of the good one.
 func fakeGitHub(t *testing.T, version string, zipBytes []byte, corrupt bool) {
 	t.Helper()
 	sum := sha256.Sum256(zipBytes)
@@ -68,27 +69,20 @@ func fakeGitHub(t *testing.T, version string, zipBytes []byte, corrupt bool) {
 	if corrupt {
 		served = append(append([]byte{}, zipBytes...), 'x')
 	}
+	tag := "v" + version
 	mux := http.NewServeMux()
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	mux.HandleFunc("/latest", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
-			"tag_name": "v" + version,
-			"html_url": "https://example.test/release",
-			"body":     "notes",
-			"assets": []map[string]any{
-				{"name": ExtensionAsset, "browser_download_url": srv.URL + "/zip", "size": len(served)},
-				{"name": SumsAsset, "browser_download_url": srv.URL + "/sums", "size": 100},
-			},
-		})
+	mux.HandleFunc("/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, srv.URL+"/releases/tag/"+tag, http.StatusFound)
 	})
-	mux.HandleFunc("/sums", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/releases/download/"+tag+"/"+SumsAsset, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s  %s\n%s  other-file\n", hex.EncodeToString(sum[:]), ExtensionAsset, strings.Repeat("0", 64))
 	})
-	mux.HandleFunc("/zip", func(w http.ResponseWriter, r *http.Request) { w.Write(served) })
-	old := LatestURL
-	LatestURL = srv.URL + "/latest"
-	t.Cleanup(func() { LatestURL = old })
+	mux.HandleFunc("/releases/download/"+tag+"/"+ExtensionAsset, func(w http.ResponseWriter, r *http.Request) { w.Write(served) })
+	old := ReleasesURL
+	ReleasesURL = srv.URL + "/releases"
+	t.Cleanup(func() { ReleasesURL = old })
 }
 
 func write(t *testing.T, path, body string) {
@@ -159,7 +153,7 @@ func TestApplyUpdatesFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rel.Version != "0.6.0" || rel.Notes != "notes" {
+	if rel.Version != "0.6.0" || !strings.HasSuffix(rel.URL, "/releases/tag/v0.6.0") {
 		t.Fatalf("release %+v", rel)
 	}
 	places := []Place{{Dir: dir}, {Dir: "/never/touched", Skip: "a development build"}}

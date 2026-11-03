@@ -20,7 +20,6 @@ const AUTO_CHECK_MS = 24 * 60 * 60 * 1000;
 interface CompanionUpdateInfo {
   latest: string;
   url: string;
-  notes: string;
   companion: string;
   places: Place[] | null;
 }
@@ -29,11 +28,14 @@ function current(): string {
   return chrome.runtime.getManifest().version;
 }
 
-async function fromGitHub(): Promise<{ latest: string; url: string; notes: string }> {
+// The REST API, since github.com's pages cannot be read across origins. It allows
+// 60 requests an hour per IP address; on a busy shared network the check may fail
+// until later. The companion does not use it.
+async function fromGitHub(): Promise<{ latest: string; url: string }> {
   const res = await fetch(LATEST_API, { headers: { Accept: "application/vnd.github+json" } });
   if (!res.ok) throw new Error(`could not reach GitHub to check for updates (${res.status})`);
-  const body = (await res.json()) as { tag_name: string; html_url: string; body: string | null };
-  return { latest: body.tag_name.replace(/^v/, ""), url: body.html_url, notes: body.body ?? "" };
+  const body = (await res.json()) as { tag_name: string; html_url: string };
+  return { latest: body.tag_name.replace(/^v/, ""), url: body.html_url };
 }
 
 export async function check(): Promise<UpdateStatus> {
@@ -54,7 +56,6 @@ export async function check(): Promise<UpdateStatus> {
       latest: viaCompanion.latest,
       available,
       url: viaCompanion.url,
-      notes: viaCompanion.notes,
       companion: viaCompanion.companion,
       places,
       canApply: available && (usable.length > 0 || newer(viaCompanion.latest, viaCompanion.companion)),

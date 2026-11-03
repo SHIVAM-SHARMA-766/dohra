@@ -513,14 +513,19 @@ rewrite that folder ([companion/internal/update](companion/internal/update/updat
 
 1. **Check.** Settings sends `update-check` to the background
    ([background/updater.ts](src/background/updater.ts)), which asks the companion. The
-   companion reads GitHub's latest release and its `SHA256SUMS`, and finds where Dohra
+   companion reads the latest release from github.com, not the REST API: the API
+   allows 60 requests an hour per IP address without logging in, which a college or
+   office network shares. `/releases/latest` redirects to `/releases/tag/v<version>`;
+   the release's `SHA256SUMS`, from `/releases/download/v<version>/`, lists and pins
+   every file. Then it finds where Dohra
    is loaded from: every profile of Chrome, Chromium, Brave and Edge
    (`paths.BrowserDataDirs`), in `Preferences` and `Secure Preferences`, entry
    `extensions.settings.<Dohra's ID>` with `location` 4 (unpacked) and an absolute
    `path`. A folder whose `manifest.json` is not Dohra's, or that sits in a checkout
    (`../package.json` and `../src/manifest.json`), is reported with a reason and left
    alone. Without a companion that can update (none, or one before 0.6), the
-   background reads the release from GitHub itself, so Dohra can still say that an
+   background reads the release from GitHub's API itself (github.com's pages cannot be
+   read across origins), so Dohra can still say that an
    update exists and how to apply it by hand. The background repeats the check once a
    day, quietly; the popup shows a banner when one is found.
 2. **Apply.** `update-apply` is refused while recording, since a reload ends the
