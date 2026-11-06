@@ -48,7 +48,7 @@ anyone can take notes; Dohra keeps the whole class so you can go back to it.
 | 🔎 **Search every class** | One search box finds a word in any recording's transcript and plays from that line. |
 | 🎬 **Or just a recorder** | Turn transcripts off and Dohra is a simple, full-quality video recorder. |
 | 🔄 **Updates in one click** | Settings checks for new versions and installs them for you. |
-| 💸 **Free and open source** | MIT licensed. Every download is checked against a pinned SHA-256. |
+| 💸 **Free and open source** | MIT licensed. Every download is checked against a pinned SHA-256, and updates must be signed. |
 
 ## Install in five minutes
 
@@ -271,9 +271,9 @@ updates.
 
 **Updating is one click.** Dohra checks for a new version once a day and the popup
 tells you when there is one. In **Settings → Updates**, press **Update to …**: the
-companion downloads the release from GitHub, verifies every file against its SHA-256,
-installs it into your Dohra folder, updates itself, and Dohra restarts with your
-recordings untouched.
+companion downloads the release from GitHub, checks that it is signed with Dohra's
+release key and that every file matches its SHA-256, installs it into your Dohra
+folder, updates itself, and Dohra restarts with your recordings untouched.
 
 <details>
 <summary>Updating without the companion</summary>
@@ -378,12 +378,21 @@ in `chrome://extensions`.
 Bump `version` in `package.json`, commit, then push a matching tag:
 
 ```sh
-git tag v0.6.1 && git push origin v0.6.1
+git tag v0.7.0 && git push origin v0.7.0
 ```
 
 The release workflow builds the extension zip and the companion for Linux, Windows and
-macOS, and attaches them to a GitHub release with their checksums. Installed copies
-offer the update within a day.
+macOS into a **draft** release with their checksums. Then, on the maintainer's
+computer, sign and publish it:
+
+```sh
+scripts/sign-release.sh v0.7.0 /path/to/dohra-release.key
+```
+
+It checks every file against `SHA256SUMS`, signs that file with the release key (an
+Ed25519 key that never leaves this computer), uploads `SHA256SUMS.sig` and publishes
+the release. Installed copies offer the update within a day, and install it only if
+the signature matches the public key built into the companion.
 </details>
 
 ## License

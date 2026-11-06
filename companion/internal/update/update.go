@@ -8,14 +8,20 @@
 // Preferences (extensions.settings.<id>.path), which is how the folder is found.
 //
 // Every file comes from the latest release and is checked against the release's
-// SHA256SUMS before anything is replaced. A folder that is a development build
-// (dist/ in a checkout) is never touched.
+// SHA256SUMS before anything is replaced, and SHA256SUMS itself must carry a valid
+// Ed25519 signature (SHA256SUMS.sig) from the maintainer's key, built in below. The
+// private key never leaves the maintainer's computer (tools/sign,
+// scripts/sign-release.sh), so a release published with stolen GitHub access alone
+// is refused. A folder that is a development build (dist/ in a checkout) is never
+// touched.
 package update
 
 import (
 	"bufio"
 	"cmp"
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,9 +47,14 @@ import (
 // such limit. DOHRA_UPDATE_URL points it at a stand-in for the end-to-end test.
 var ReleasesURL = cmp.Or(os.Getenv("DOHRA_UPDATE_URL"), "https://github.com/SHIVAM-SHARMA-766/dohra/releases")
 
+// releaseKey is the maintainer's Ed25519 public key (base64). The end-to-end test
+// builds companions with its own key: -ldflags "-X .../update.releaseKey=...".
+var releaseKey = "ISc733xXy0bVpQBUcSJKqzFstOTUm4iuP4GcQj92HKY="
+
 const (
 	ExtensionAsset = "dohra-extension.zip"
 	SumsAsset      = "SHA256SUMS"
+	SigAsset       = "SHA256SUMS.sig"
 	// unpacked is Chrome's location code for an extension loaded with "Load unpacked".
 	unpacked = 4
 )
@@ -98,6 +109,13 @@ func Latest(ctx context.Context) (Release, error) {
 	if err != nil {
 		return Release{}, fmt.Errorf("read %s of %s: %w", SumsAsset, tag, err)
 	}
+	sig, err := get(ctx, rel.download(SigAsset), 4<<10)
+	if err != nil {
+		return Release{}, fmt.Errorf("release %s is not signed yet (%s): try again later", tag, err)
+	}
+	if err := verifySums(text, sig); err != nil {
+		return Release{}, fmt.Errorf("release %s: %w", tag, err)
+	}
 	sc := bufio.NewScanner(strings.NewReader(string(text)))
 	for sc.Scan() {
 		// sha256sum's format: "<hash>  <name>", with "*" before binary-mode names.
@@ -107,6 +125,19 @@ func Latest(ctx context.Context) (Release, error) {
 		}
 	}
 	return rel, nil
+}
+
+// verifySums checks SHA256SUMS against its signature with the built-in key.
+func verifySums(sums, sig []byte) error {
+	pub, err := base64.StdEncoding.DecodeString(releaseKey)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		return errors.New("this companion has no valid release key")
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(sig)))
+	if err != nil || !ed25519.Verify(pub, sums, raw) {
+		return errors.New("its checksums are not signed with Dohra's release key; not installing it")
+	}
+	return nil
 }
 
 func (r Release) download(name string) string {

@@ -4,7 +4,10 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -59,15 +62,44 @@ func extensionZip(t *testing.T, version string, files map[string]string) []byte 
 	return buf.Bytes()
 }
 
+// signing says how fakeGitHub signs SHA256SUMS: with the key the companion trusts,
+// another key, or not at all.
+type signing int
+
+const (
+	signed signing = iota
+	wrongKey
+	unsigned
+)
+
+// trustKey makes the companion trust a fresh test key for this test and returns it.
+func trustKey(t *testing.T) ed25519.PrivateKey {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := releaseKey
+	releaseKey = base64.StdEncoding.EncodeToString(pub)
+	t.Cleanup(func() { releaseKey = old })
+	return priv
+}
+
 // fakeGitHub serves github.com's releases as Dohra reads them: /latest
 // redirects to the tag, files are under /download/<tag>/. A corrupt zip is
 // listed with the checksum of the good one.
-func fakeGitHub(t *testing.T, version string, zipBytes []byte, corrupt bool) {
+func fakeGitHub(t *testing.T, version string, zipBytes []byte, corrupt bool, sig ...signing) {
 	t.Helper()
+	key := trustKey(t)
 	sum := sha256.Sum256(zipBytes)
 	served := zipBytes
 	if corrupt {
 		served = append(append([]byte{}, zipBytes...), 'x')
+	}
+	sums := fmt.Sprintf("%s  %s\n%s  other-file\n", hex.EncodeToString(sum[:]), ExtensionAsset, strings.Repeat("0", 64))
+	mode := signed
+	if len(sig) > 0 {
+		mode = sig[0]
 	}
 	tag := "v" + version
 	mux := http.NewServeMux()
@@ -76,13 +108,44 @@ func fakeGitHub(t *testing.T, version string, zipBytes []byte, corrupt bool) {
 	mux.HandleFunc("/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, srv.URL+"/releases/tag/"+tag, http.StatusFound)
 	})
-	mux.HandleFunc("/releases/download/"+tag+"/"+SumsAsset, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s  %s\n%s  other-file\n", hex.EncodeToString(sum[:]), ExtensionAsset, strings.Repeat("0", 64))
-	})
+	mux.HandleFunc("/releases/download/"+tag+"/"+SumsAsset, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, sums) })
+	if mode != unsigned {
+		signer := key
+		if mode == wrongKey {
+			_, signer, _ = ed25519.GenerateKey(rand.Reader)
+		}
+		mux.HandleFunc("/releases/download/"+tag+"/"+SigAsset, func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintln(w, base64.StdEncoding.EncodeToString(ed25519.Sign(signer, []byte(sums))))
+		})
+	}
 	mux.HandleFunc("/releases/download/"+tag+"/"+ExtensionAsset, func(w http.ResponseWriter, r *http.Request) { w.Write(served) })
 	old := ReleasesURL
 	ReleasesURL = srv.URL + "/releases"
 	t.Cleanup(func() { ReleasesURL = old })
+}
+
+func TestLatestRequiresTheReleaseKey(t *testing.T) {
+	zip := extensionZip(t, "0.7.0", nil)
+	fakeGitHub(t, "0.7.0", zip, false)
+	if _, err := Latest(context.Background()); err != nil {
+		t.Fatalf("signed release refused: %v", err)
+	}
+	for _, c := range []struct {
+		name string
+		mode signing
+		want string
+	}{
+		{"unsigned", unsigned, "not signed yet"},
+		{"signed with another key", wrongKey, "not signed with Dohra's release key"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			fakeGitHub(t, "0.7.0", zip, false, c.mode)
+			_, err := Latest(context.Background())
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("error %v, want %q", err, c.want)
+			}
+		})
+	}
 }
 
 func write(t *testing.T, path, body string) {

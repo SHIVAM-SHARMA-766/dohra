@@ -1,5 +1,6 @@
 // End-to-end test of updating from Settings: an old Dohra (0.0.1) and an old
-// companion are installed, a local stand-in for GitHub publishes 0.0.2, and the
+// companion are installed, a local stand-in for GitHub publishes 0.0.2 (signed with
+// a key made for the test, which the test's companions trust), and the
 // test clicks "Check for updates", then "Update". It checks that the extension's
 // folder was rewritten, that Dohra reloaded as 0.0.2 and said so, and that the
 // companion replaced itself.
@@ -10,7 +11,7 @@
 // otherwise the companion's install downloads it (about 30 MB).
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { dirname, join } from "node:path";
@@ -51,8 +52,14 @@ async function extensionAt(dir, version) {
   await writeFile(join(dir, "manifest.json"), JSON.stringify(manifest, null, 2));
 }
 
+// The test's own release key: companions are built to trust it, and the stand-in
+// release is signed with it, as scripts/sign-release.sh signs a real one.
+const releaseKey = generateKeyPairSync("ed25519");
+const releasePublic = Buffer.from(releaseKey.publicKey.export({ format: "jwk" }).x, "base64url").toString("base64");
+
 function buildCompanion(out, version) {
-  run("go", ["build", "-ldflags", `-X main.version=${version}`, "-o", out, "."], { cwd: join(root, "companion") });
+  const flags = `-X main.version=${version} -X github.com/SHIVAM-SHARMA-766/dohra/companion/internal/update.releaseKey=${releasePublic}`;
+  run("go", ["build", "-ldflags", flags, "-o", out, "."], { cwd: join(root, "companion") });
 }
 
 const sha256 = async (file) => createHash("sha256").update(await readFile(file)).digest("hex");
@@ -60,6 +67,7 @@ const sha256 = async (file) => createHash("sha256").update(await readFile(file))
 /** A stand-in for github.com's releases: /latest redirects to the tag, files are under /download/<tag>/. */
 async function serveRelease(files) {
   const sums = (await Promise.all(Object.entries(files).map(async ([name, path]) => `${await sha256(path)}  ${name}`))).join("\n") + "\n";
+  const sig = sign(null, Buffer.from(sums), releaseKey.privateKey).toString("base64") + "\n";
   const prefix = `/releases/download/v${NEW}/`;
   const server = http.createServer(async (req, res) => {
     if (req.url === "/releases/latest") {
@@ -68,6 +76,7 @@ async function serveRelease(files) {
     }
     const name = req.url.startsWith(prefix) ? decodeURIComponent(req.url.slice(prefix.length)) : "";
     if (name === "SHA256SUMS") return res.end(sums);
+    if (name === "SHA256SUMS.sig") return res.end(sig);
     if (files[name]) return res.end(await readFile(files[name]));
     res.writeHead(404).end();
   });

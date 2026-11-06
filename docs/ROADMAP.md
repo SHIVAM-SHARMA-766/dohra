@@ -16,7 +16,7 @@ Status: ✅ done · 🔨 in progress · ⏭️ next · 🗓️ later
 | 6 | [Transcribe long recordings without loading them whole](#6-long-recordings) | Transcripts | ⏭️ |
 | 7 | [Drop echoed lines when recording without headphones](#7-echo-without-headphones) | Transcripts | ✅ 0.7 |
 | 8 | [Disk space warnings and a single-copy option](#8-disk-space) | Storage | ✅ 0.7 |
-| 9 | [Signed releases](#9-signed-releases) | Security | 🔨 |
+| 9 | [Signed releases](#9-signed-releases) | Security | ✅ 0.7 |
 | 10 | [Stage 3: summary, key points and plain-English meaning](#10-stage-3-summary-and-meaning) | Revision | 🗓️ |
 | 11 | [Stage 4: live transcript in a side panel](#11-stage-4-live-side-panel) | Recording | 🗓️ |
 | 12 | [Stage 5: desktop apps such as the Zoom app](#12-stage-5-desktop-apps) | Recording | 🗓️ |
@@ -25,7 +25,7 @@ Status: ✅ done · 🔨 in progress · ⏭️ next · 🗓️ later
 
 | Version | What |
 |---|---|
-| 0.7 | Subtitles (.srt, .vtt); search inside every transcript from the library; bookmarks while recording; echoed lines dropped without headphones; low-disk warning and keeping videos only in Downloads |
+| 0.7 | Subtitles (.srt, .vtt); search inside every transcript from the library; bookmarks while recording; echoed lines dropped without headphones; low-disk warning and keeping videos only in Downloads; signed releases |
 | 0.6 | Speaker names from Meet and Teams; transcripts optional (plain recorder mode); one-click updates from Settings |
 | 0.5 | Roman-script Hinglish transcripts; High model (Hindi2Hinglish); Import video; live transcription progress; following the meeting's mute; new design |
 | 0.4 | Speech models (Small, Medium, High) chosen and downloaded in the app; first-run setup page |
@@ -117,8 +117,9 @@ Downloads once that copy is verified; the transcript, bookmarks and search stay.
 Updates are checked against the release's SHA-256 sums, which catch damaged
 downloads.
 
-**Plan:** sign every release with a private key and pin the public key in the
-companion, so an update is installed only if it was signed by Dohra's maintainer.
+✅ **Done in 0.7.** Every release's `SHA256SUMS` is signed with the maintainer's
+Ed25519 key, on the maintainer's computer, and the companion installs an update only
+when the signature matches the public key built into it.
 
 ## 10. Stage 3: summary and meaning
 

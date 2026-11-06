@@ -1,7 +1,8 @@
 name: Release
 
-# Push a tag like v0.2.0 (matching package.json) to publish the extension zip and
-# the companion for each platform.
+# Push a tag like v0.7.0 (matching package.json) to build the extension zip and the
+# companion for each platform into a draft release; scripts/sign-release.sh then
+# signs and publishes it.
 on:
   push:
     tags: ["v*"]
@@ -41,9 +42,12 @@ jobs:
               -o "../release/dohra-companion-$os-$arch$ext" .
           done
           cd ../release && sha256sum dohra-* > SHA256SUMS
-      - name: Publish
+      # A draft: nobody downloads it, and installed copies do not see it, until the
+      # maintainer signs SHA256SUMS on their own computer and publishes it
+      # (scripts/sign-release.sh). The signing key never reaches GitHub.
+      - name: Create a draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release/* \
+          gh release create "$GITHUB_REF_NAME" release/* --draft \
             --title "Dohra $GITHUB_REF_NAME" --generate-notes
