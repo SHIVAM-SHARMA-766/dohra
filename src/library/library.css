@@ -230,6 +230,7 @@ main {
 
 .match {
   display: flex;
+  justify-content: flex-start; /* buttons centre their content by default */
   gap: 8px;
   align-items: baseline;
   width: 100%;

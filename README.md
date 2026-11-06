@@ -236,7 +236,16 @@ bookmarks and transcript state. **Search** looks through titles *and* every tran
 — "which class covered BFS?" — showing the matching lines under each recording;
 click one to play from there. Open, save a copy, delete, or **Import video**.
 
-![The library](docs/images/06-library.png)
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/06-library.png" alt="The library" /></td>
+    <td width="50%"><img src="docs/images/14-library-search.png" alt="Searching 'bfs' finds the matching lines inside a class's transcript" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Every recording, with bookmarks and transcript state</sub></td>
+    <td align="center"><sub>Search finds words inside every transcript</sub></td>
+  </tr>
+</table>
 
 Every recording is also copied to your **Downloads** folder, one folder per class, so
 it survives even removing the browser. To save disk space, **Free up space** on a

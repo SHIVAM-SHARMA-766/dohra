@@ -75,7 +75,7 @@ The library searches titles today; each recording's page searches its own transc
 script, and by speaker), lists the matching lines under each recording, and opens the
 video at that line.
 
-![The library and its search box](images/06-library.png)
+![The library's search finding lines inside a transcript](images/14-library-search.png)
 
 ## 5. Bookmarks while recording
 

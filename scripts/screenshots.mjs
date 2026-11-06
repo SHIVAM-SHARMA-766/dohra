@@ -185,6 +185,13 @@ const demoId = await page.evaluate(
         ...(name ? { name } : {}),
       })),
     });
+    await write(dir, "bookmarks.json", {
+      schema: 1,
+      bookmarks: [
+        { ms: 9_600, at: new Date().toISOString() },
+        { ms: 24_000, at: new Date().toISOString() },
+      ],
+    });
     await chrome.storage.session.remove(["transcripts", "active", "lastError"]);
     // The e2e test leaves the microphone switch on; show a fresh install's popup.
     await chrome.storage.local.set({ settings: { micSwitchInPopup: false, mic: true, autoExport: true, transcribe: true } });
@@ -236,11 +243,12 @@ await page.evaluate(() =>
       status: "recording",
       progress: { durationMs: 2537000, bytes: 912e6, paused: false, at: Date.now() },
       mic: { recorded: true, meeting: false, manual: false },
+      bookmarks: 2,
     },
     transcripts: { demo: { state: "live", receivedMs: 2537000, doneMs: 2290000, error: null } },
   }),
 );
-await shot("05-popup-recording", { width: 340, height: 470 });
+await shot("05-popup-recording", { width: 340, height: 530 });
 await page.evaluate(() => chrome.storage.session.remove(["active", "transcripts"]));
 await tab.close();
 
@@ -265,6 +273,8 @@ await shot("10-popup-update", { width: 340, height: 520 });
 // ---- library, a recording, settings ----
 await page.goto(base + "library.html");
 await shot("06-library");
+await page.type("#search", "bfs");
+await shot("14-library-search", { height: 560 });
 await page.goto(`${base}session.html?id=${encodeURIComponent(demoId)}`);
 await shot("07-session");
 await element("12-speaker-names", ".lines");
