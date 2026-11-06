@@ -6,7 +6,8 @@
 // Scenarios:
 //   0. first-run setup page: microphone and companion shown as done, then the Small
 //      speech model downloaded from the page and made active
-//   1. video + mic, with a pause in the middle, stopped from the popup
+//   1. video + mic, with a pause in the middle, stopped from the popup; two moments
+//      bookmarked (a double press counts once), saved and copied to Downloads
 //   1b. a meeting page at meet.google.com (served locally): muting in the meeting,
 //      and in Dohra, silences the recorded microphone; who is speaking is read from
 //      the participant tiles, and the transcript's lines carry that name
@@ -14,11 +15,14 @@
 //   3. browser killed mid-recording, then recovered by the library on next launch
 //   4. the library lists them all
 //   5. live transcription of a speech page through the companion, then the session
-//      page: every line shown, clicking a line seeks, search filters
+//      page: every line shown, clicking a line seeks, search filters, subtitles
+//      download; and the library's search finds the line and plays from it
 //   6. transcribing a recording again from its session page, after its transcript
 //      is removed
 //   7. importing an audio file from disk: stored, opened, and transcribed with a
 //      visible percentage
+//   8. freeing up space: a recording's video leaves the browser once its Downloads
+//      copy is verified, and its page points to Downloads instead
 //
 // Each recording is checked for: completed state, a duration that matches the time
 // actually recorded (pauses excluded), working seek, audible audio, the expected video
@@ -565,17 +569,35 @@ async function main() {
     check(quick.summary === "Audio + video · Microphone · Transcript", "quick start states what is recorded", quick.summary);
     const one = await startRecording(browser, page, ext, control, { title: "E2E video", mic: process.env.E2E_MIC !== "0" });
     await sleep(6_000);
+    await command(control, "bookmark");
+    await command(control, "bookmark"); // a double press: one bookmark
     await command(control, "pause");
     await waitForStatus(control, "paused");
     await sleep(4_000);
     await command(control, "resume");
     await waitForStatus(control, "recording");
-    await sleep(6_000);
+    await sleep(4_000);
+    await command(control, "bookmark");
+    const marked = (await state(control)).active?.bookmarks;
+    await sleep(2_000);
     await command(control, "stop");
     await waitForStatus(control, null);
     const err1 = (await state(control)).lastError;
     check(!err1, "no error reported", err1 ?? "");
     await verify(browser, ext, one, { endReason: "user", durationS: [11, 13.5], exported: true });
+    const bookmarks = await control.evaluate(async (id) => {
+      const root = await navigator.storage.getDirectory();
+      const dir = await (await root.getDirectoryHandle("sessions")).getDirectoryHandle(id);
+      return JSON.parse(await (await (await dir.getFileHandle("bookmarks.json")).getFile()).text()).bookmarks.map((b) => b.ms);
+    }, one).catch((e) => String(e));
+    // At about 6 s and 10 s of recorded time: the pause does not count.
+    check(
+      marked === 2 && Array.isArray(bookmarks) && bookmarks.length === 2 && Math.abs(bookmarks[0] - 6_000) < 1_500 && Math.abs(bookmarks[1] - 10_000) < 1_500,
+      "bookmarks saved at the recorded moments, a double press once",
+      `${marked} in the popup; ${JSON.stringify(bookmarks)}`,
+    );
+    const bookmarksCopy = await readFile(join(downloads, "Dohra", one, "bookmarks.json"), "utf8").then((t) => JSON.parse(t).bookmarks.length, () => 0);
+    check(bookmarksCopy === 2, "bookmarks copied to Downloads");
 
     // Let the companion finish scenario 1's transcript first: whisper.cpp takes every
     // core while it works, and a starved browser opens the popup too slowly.
@@ -619,6 +641,8 @@ async function main() {
       const dir = await (await root.getDirectoryHandle("sessions")).getDirectoryHandle(id);
       return JSON.parse(await (await (await dir.getFileHandle("speakers.json")).getFile()).text());
     }, mb).catch((e) => ({ error: String(e) }));
+    const speakersCopy = await readFile(join(downloads, "Dohra", mb, "speakers.json"), "utf8").then(() => true, () => false);
+    check(speakersCopy, "speakers copied to Downloads");
     const heard = new Set((timeline.events ?? []).flatMap((e) => e.speaking.map((s) => s.name)));
     check(
       heard.has("Asha Verma") && !heard.has("Rahul K") && timeline.events.every((e) => e.tiles === 3),
@@ -716,7 +740,47 @@ async function main() {
       const matches = await sp.$$eval(".line", (els) => els.length);
       const marked = await sp.$$eval(".line mark", (els) => els.length);
       check(matches > 0 && matches <= shown && marked > 0, "search filters and highlights", `${matches} of ${shown} lines`);
+      await sp.$eval("#download-srt", (b) => b.click());
+      await sp.$eval("#download-vtt", (b) => b.click());
+      let srt = "";
+      let vtt = "";
+      for (let i = 0; i < 20 && (!srt || !vtt); i++) {
+        await sleep(500);
+        srt = await readFile(join(downloads, `${five}.srt`), "utf8").catch(() => "");
+        vtt = await readFile(join(downloads, `${five}.vtt`), "utf8").catch(() => "");
+      }
+      check(
+        /^1\n00:00:\d\d,\d{3} --> 00:00:\d\d,\d{3}\n/.test(srt) && srt.toLowerCase().includes("country") && vtt.startsWith("WEBVTT\n\n"),
+        "subtitles download as .srt and .vtt",
+        srt.split("\n").slice(0, 3).join(" | "),
+      );
       await sp.close();
+
+      // The library searches inside transcripts and plays from the matching line.
+      const lib5 = await browser.newPage();
+      await lib5.goto(`chrome-extension://${ext.id}/library.html`);
+      await lib5.waitForSelector(".item");
+      await lib5.type("#search", "country");
+      const found = await lib5.waitForSelector(".match", { timeout: 5_000 }).then(() => true, () => false);
+      const items = await lib5.$$eval(".item .title", (els) => els.map((e) => e.textContent));
+      // The speech also played in the meeting scenario; the tone-only recording has no words.
+      check(
+        found && items.some((t) => t.startsWith("E2E transcript")) && !items.some((t) => t.startsWith("E2E video")),
+        "library search finds the line inside the transcript",
+        items.join(" | "),
+      );
+      if (found) {
+        const target = t5.lines.find((l) => l.text.toLowerCase().includes("country"));
+        await lib5.evaluate(() => {
+          const item = [...document.querySelectorAll(".item")].find((i) => i.querySelector(".title").textContent.startsWith("E2E transcript"));
+          item.querySelector(".match").click();
+        });
+        const played = await lib5
+          .waitForFunction((t) => location.pathname.endsWith("/session.html") && Math.abs(document.getElementById("media")?.currentTime - t) < 1.5, { timeout: 10_000 }, target.startMs / 1000)
+          .then(() => true, () => false);
+        check(played, "and opens the recording at that line", `${(target.startMs / 1000).toFixed(1)}s`);
+      }
+      await lib5.close();
 
       console.log("\n6. transcribing again from the session page");
       // Every recording is transcribed now, so remove this one's transcript to get a
@@ -793,6 +857,37 @@ async function main() {
 
       await libPage.close();
     }
+
+    console.log("\n8. freeing up space: the video stays only in Downloads");
+    const lib8 = await browser.newPage();
+    lib8.on("dialog", (d) => void d.accept());
+    await lib8.goto(`chrome-extension://${ext.id}/library.html`);
+    await lib8.waitForSelector(".item");
+    const freed = await lib8.evaluate(() => {
+      const item = [...document.querySelectorAll(".item")].find((i) => i.querySelector(".title").textContent.startsWith("E2E tab closed"));
+      const button = item?.querySelector('button[aria-label^="Free up space"]');
+      button?.click();
+      return !!button;
+    });
+    check(freed, "the library offers to free up space for a recording copied to Downloads");
+    await lib8.waitForFunction(() => [...document.querySelectorAll(".item .tag")].some((t) => t.textContent === "In Downloads only"), { timeout: 10_000 }).catch(() => {});
+    const after8 = await lib8.evaluate(async (id) => {
+      const root = await navigator.storage.getDirectory();
+      const dir = await (await root.getDirectoryHandle("sessions")).getDirectoryHandle(id);
+      const names = [];
+      for await (const name of dir.keys()) names.push(name);
+      const meta = JSON.parse(await (await (await dir.getFileHandle("session.json")).getFile()).text());
+      return { names, removed: meta.browserCopyRemovedAt };
+    }, two);
+    check(!!after8.removed && !after8.names.includes("recording.webm"), "the video left the browser", after8.names.join(", "));
+    const stillThere = await readFile(join(downloads, "Dohra", two, "recording.webm")).then((b) => b.length > 0, () => false);
+    check(stillThere, "the Downloads copy is untouched");
+    await lib8.goto(`chrome-extension://${ext.id}/session.html?id=${two}`);
+    const pointed = await lib8
+      .waitForFunction(() => !document.getElementById("video-elsewhere").hidden && document.getElementById("media").hidden, { timeout: 10_000 })
+      .then(() => lib8.$eval("#video-path", (el) => el.textContent), () => "");
+    check(pointed.endsWith(`/${two}/recording.webm`), "its page points to the copy in Downloads", pointed);
+    await lib8.close();
   } finally {
     await browser.close().catch(() => {});
     server.close();

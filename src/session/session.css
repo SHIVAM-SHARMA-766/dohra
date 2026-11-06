@@ -283,9 +283,12 @@ h1 {
   padding: 10px 16px;
   border-top: 1px solid var(--border);
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
 }
 
+/* The buttons show and hide together, with the transcript. */
 .transcript-actions:has(button[hidden]) {
   display: none;
 }
@@ -294,4 +297,64 @@ h1 {
   main {
     padding: 16px;
   }
+}
+
+/* Moments bookmarked while recording, under the player. */
+.bookmarks {
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+
+.bookmarks h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  margin: 0 0 8px;
+}
+
+.bookmarks h3 svg.icon {
+  color: var(--accent);
+}
+
+.bookmark-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bookmark-list button {
+  font-family: ui-monospace, monospace;
+  font-size: 12.5px;
+  padding: 4px 10px;
+}
+
+.line .mark {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-right: 5px;
+  color: var(--accent);
+}
+
+.line .mark svg.icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* A recording whose video lives only in Downloads. */
+.video-elsewhere {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 32px 20px;
+  text-align: center;
+}
+
+.video-elsewhere p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.video-elsewhere code {
+  overflow-wrap: anywhere;
 }

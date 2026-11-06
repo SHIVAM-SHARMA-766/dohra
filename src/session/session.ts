@@ -4,7 +4,7 @@
 // transcribed can be read while it grows.
 
 import { errorMessage, type Reply } from "../lib/messages";
-import { formatBytes, formatDuration, mediaFileName, type SessionMeta } from "../lib/session";
+import { EXPORT_DIR, formatBytes, formatDuration, mediaFileName, type SessionMeta } from "../lib/session";
 import { getSession, recordingFile, StorageWorker } from "../lib/storage";
 import {
   floatToPcm,
@@ -18,7 +18,10 @@ import {
   type TranscriptLine,
   type TranscriptStatus,
 } from "../lib/transcript";
-import { hydrateIcons } from "../lib/icons";
+import { hydrateIcons, icon } from "../lib/icons";
+import { readBookmarks, type Bookmark } from "../lib/bookmarks";
+import { downloadsCopy } from "../lib/downloads";
+import { cues, toSrt, toVtt } from "../lib/subtitles";
 import { hasDevanagari, searchKey, toRoman } from "../lib/translit";
 
 const MODEL_LABEL: Record<string, string> = { small: "Small", medium: "Medium", large: "High" };
@@ -40,6 +43,7 @@ let roman = false;
 let rendered: { line: TranscriptLine; el: HTMLLIElement }[] = [];
 let currentIndex = -1;
 let lastUserScroll = 0;
+let bookmarks: Bookmark[] = [];
 
 function showNotice(text: string | null): void {
   $<HTMLElement>("notice").textContent = text ?? "";
@@ -78,7 +82,9 @@ function renderLines(): void {
   const query = search.value.trim().toLowerCase();
   rendered = [];
   const items: HTMLLIElement[] = [];
-  for (const line of lines) {
+  // Lines a bookmark falls in.
+  const marked = new Set(bookmarks.map((b) => lineAt(lines, b.ms)));
+  for (const [index, line] of lines.entries()) {
     if (query && !searchKey(line.text).includes(query)) continue;
     const li = document.createElement("li");
     li.className = "line";
@@ -96,6 +102,13 @@ function renderLines(): void {
       // Each person keeps one colour through the transcript.
       if (line.name) speaker.style.setProperty("--hue", String(hue(line.name)));
       body.append(speaker);
+    }
+    if (marked.has(index)) {
+      const mark = document.createElement("span");
+      mark.className = "mark";
+      mark.title = "Bookmarked";
+      mark.append(icon("bookmark"));
+      body.append(mark);
     }
     body.append(...highlight(displayText(line), query));
     li.append(time, body);
@@ -122,7 +135,7 @@ function renderLines(): void {
   updateCurrent();
 
   $<HTMLElement>("script").hidden = !lines.some((l) => hasDevanagari(l.text));
-  $<HTMLButtonElement>("download-txt").hidden = lines.length === 0;
+  for (const b of ["download-txt", "download-srt", "download-vtt"]) $<HTMLButtonElement>(b).hidden = lines.length === 0;
 }
 
 function updateCurrent(): void {
@@ -198,6 +211,12 @@ async function offerTranscription(failed: boolean): Promise<void> {
   const button = $<HTMLButtonElement>("transcribe");
   text.textContent = failed ? "No transcript was produced." : "This recording has no transcript yet.";
   button.textContent = failed ? "Try again" : "Transcribe this recording";
+  if (meta?.browserCopyRemovedAt) {
+    // The audio is no longer here to transcribe.
+    button.hidden = true;
+    text.textContent += " Its video is only in Downloads now; import that file to transcribe it.";
+    return;
+  }
   try {
     const info = (await request({ type: "companion-status" })) as CompanionInfo;
     button.hidden = !info.ready || meta?.state !== "complete";
@@ -269,6 +288,15 @@ async function transcribeRecording(): Promise<void> {
   }
 }
 
+function save(text: string, type: string, ext: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${id}${roman ? "-roman" : ""}.${ext}`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 function downloadText(): void {
   if (!transcript || !meta) return;
   const header = `${meta.title}\n${new Date(meta.startedAt).toLocaleString()}\n\n`;
@@ -278,12 +306,48 @@ function downloadText(): void {
       return `[${formatDuration(l.startMs)}] ${label ? `${label}: ` : ""}${displayText(l)}`;
     })
     .join("\n");
-  const url = URL.createObjectURL(new Blob([header + body + "\n"], { type: "text/plain;charset=utf-8" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${id}${roman ? "-roman" : ""}.txt`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  save(header + body + "\n", "text/plain", "txt");
+}
+
+/** Captions in the script shown on the page, named like the recording so players pick them up. */
+function downloadSubtitles(format: "srt" | "vtt"): void {
+  if (!transcript) return;
+  const list = cues(transcript.lines, speakerLabel, displayText);
+  if (format === "srt") save(toSrt(list), "application/x-subrip", "srt");
+  else save(toVtt(list), "text/vtt", "vtt");
+}
+
+/** In place of the player, for a recording whose video was removed from the browser to save space. */
+function showVideoInDownloads(m: SessionMeta): void {
+  media.hidden = true;
+  const box = $<HTMLElement>("video-elsewhere");
+  box.hidden = false;
+  $<HTMLElement>("video-path").textContent = `Downloads/${EXPORT_DIR}/${m.id}/${mediaFileName(m)}`;
+  $<HTMLButtonElement>("show-video").addEventListener("click", () => {
+    void downloadsCopy(m).then((copy) => {
+      if (copy) chrome.downloads.show(copy.id);
+      else showNotice("The video is no longer in Downloads; it may have been moved or deleted.");
+    });
+  });
+}
+
+// ---- bookmarks ----------------------------------------------------------------------
+
+function renderBookmarks(): void {
+  $<HTMLElement>("bookmarks").hidden = bookmarks.length === 0 || meta?.state !== "complete";
+  $<HTMLElement>("bookmark-list").replaceChildren(
+    ...bookmarks.map((b) => {
+      const button = document.createElement("button");
+      button.className = "small";
+      button.textContent = formatDuration(b.ms);
+      button.title = "Play from here";
+      button.addEventListener("click", () => {
+        media.currentTime = b.ms / 1000;
+        void media.play().catch(() => {});
+      });
+      return button;
+    }),
+  );
 }
 
 // ---- page ---------------------------------------------------------------------------
@@ -324,7 +388,9 @@ async function main(): Promise<void> {
   $<HTMLElement>("title").textContent = meta.title;
   renderDetails();
 
-  if (meta.state === "complete") {
+  if (meta.state === "complete" && meta.browserCopyRemovedAt) {
+    showVideoInDownloads(meta);
+  } else if (meta.state === "complete") {
     media.classList.toggle("audio-only", meta.mode === "audio");
     media.addEventListener("loadedmetadata", () => {
       if (!meta || meta.durationMs > 0 || !Number.isFinite(media.duration)) return;
@@ -338,7 +404,23 @@ async function main(): Promise<void> {
     showNotice("This recording is not finished yet. Open the Library to recover it.");
   }
 
+  // From a library search: filter by the query, and play from the matching line.
+  const params = new URLSearchParams(location.search);
+  search.value = params.get("q") ?? "";
+  const startAt = Number(params.get("t"));
+
+  bookmarks = await readBookmarks(id);
+  renderBookmarks();
   await reloadTranscript();
+
+  if (params.has("t") && Number.isFinite(startAt) && meta.state === "complete") {
+    const seek = () => {
+      media.currentTime = startAt / 1000;
+      void media.play().catch(() => {});
+    };
+    if (media.readyState >= 1) seek();
+    else media.addEventListener("loadedmetadata", seek, { once: true });
+  }
 
   media.addEventListener("timeupdate", updateCurrent);
   media.addEventListener("seeked", () => {
@@ -356,6 +438,8 @@ async function main(): Promise<void> {
   }
   $<HTMLButtonElement>("transcribe").addEventListener("click", () => void transcribeRecording());
   $<HTMLButtonElement>("download-txt").addEventListener("click", downloadText);
+  $<HTMLButtonElement>("download-srt").addEventListener("click", () => downloadSubtitles("srt"));
+  $<HTMLButtonElement>("download-vtt").addEventListener("click", () => downloadSubtitles("vtt"));
   chrome.storage.session.onChanged.addListener((changes) => {
     if (TRANSCRIPTS_KEY in changes) void reloadTranscript();
   });

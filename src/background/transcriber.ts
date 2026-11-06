@@ -9,9 +9,11 @@
 // Each time lines arrive, the transcript is fetched from the companion in pages
 // and rewritten in the session folder, so pages can show it while it grows.
 
+import { dropEchoes } from "../lib/echo";
 import { nameLines } from "../lib/meeting-speakers";
+import { downloadJson } from "./exports";
 import type { ModelAction } from "../lib/messages";
-import { EXPORT_DIR, FILES, SESSIONS_DIR } from "../lib/session";
+import { FILES, SESSIONS_DIR } from "../lib/session";
 import { loadSettings } from "../lib/settings";
 import {
   COMPANION_KEY,
@@ -363,6 +365,10 @@ async function save(id: string, final?: TranscriptState, error: string | null = 
     if (existing) return;
     error = e instanceof Error ? e.message : String(e);
   }
+  // The companion keeps every line; the saved transcript leaves out the meeting's
+  // words that the microphone picked up again from the speakers.
+  const kept = dropEchoes(lines);
+  lines.splice(0, lines.length, ...kept);
   const speakers = await readSpeakers(id);
   if (speakers) {
     nameLines(lines, speakers.events).forEach((name, i) => {
@@ -393,21 +399,7 @@ async function exportTranscript(id: string): Promise<void> {
   if (!autoExport) return;
   const transcript = await readTranscript(id);
   if (!transcript) return;
-  const json = JSON.stringify(transcript, null, 2) + "\n";
-  const bytes = new TextEncoder().encode(json);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  try {
-    await chrome.downloads.download({
-      // A service worker cannot create blob URLs; a data URL works for a file this size.
-      url: `data:application/json;base64,${btoa(binary)}`,
-      filename: `${EXPORT_DIR}/${id}/${FILES.transcript}`,
-      conflictAction: "overwrite",
-      saveAs: false,
-    });
-  } catch {
-    // The copy in the library is what matters; Downloads is a convenience.
-  }
+  await downloadJson(id, FILES.transcript, transcript);
 }
 
 /**

@@ -24,6 +24,8 @@ export type BackgroundRequest =
   | { target: "background"; type: "stop" }
   | { target: "background"; type: "pause" }
   | { target: "background"; type: "resume" }
+  /** Bookmark the current moment of the recording (replies with the number of bookmarks). */
+  | { target: "background"; type: "bookmark" }
   /** Mute or unmute your microphone in the recording, whatever the meeting says. */
   | { target: "background"; type: "mic-manual"; muted: boolean }
   /** From the meeting page (content/meeting-mic.ts): your mic's state there; null if unknown. */
@@ -78,8 +80,12 @@ export type OffscreenRequest =
   | { target: "offscreen"; type: "resume" }
   /** Silence or restore the microphone without stopping it. */
   | { target: "offscreen"; type: "mic-mute"; muted: boolean }
-  /** Sent once exported files are saved (or failed), so the recorder can record that and shut down. */
-  | { target: "offscreen"; type: "exported"; ok: boolean };
+  /**
+   * Sent once exported files are saved (or failed), so the recorder can record that
+   * and shut down. dropMedia: the Downloads copy is verified and the video should
+   * leave the browser (Settings → keep in browser off).
+   */
+  | { target: "offscreen"; type: "exported"; ok: boolean; dropMedia?: boolean };
 
 export type Reply = { ok: true; data?: unknown } | { ok: false; error: string };
 
@@ -95,6 +101,8 @@ export interface ActiveRecording {
   progress: Progress;
   /** Whether the microphone is recorded, and what mutes it. */
   mic?: MicState;
+  /** How many moments have been bookmarked so far. */
+  bookmarks?: number;
 }
 
 export interface MicState {

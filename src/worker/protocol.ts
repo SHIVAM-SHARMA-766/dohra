@@ -9,7 +9,9 @@ export type WorkerRequest =
   | { op: "open"; meta: SessionMeta }
   | { op: "append"; sessionId: string; data: ArrayBuffer; durationMs: number }
   | { op: "update"; sessionId: string; patch: Partial<SessionMeta> }
-  | { op: "finalize"; sessionId: string; patch: Partial<SessionMeta> };
+  | { op: "finalize"; sessionId: string; patch: Partial<SessionMeta> }
+  /** Deletes the media file, keeping everything else; only once the Downloads copy is verified. */
+  | { op: "drop-media"; sessionId: string };
 
 export type WorkerResponse =
   | { id: number; ok: true; meta: SessionMeta }

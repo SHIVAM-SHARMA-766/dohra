@@ -35,8 +35,8 @@ context can change it safely.
 | `src/worker/` | Storage worker. The only code that writes recording files. |
 | `src/popup/` | Quick start: title, start/pause/stop, live timer, and a summary of what will be recorded. Holds no state of its own. |
 | `src/settings/` | Dohra's settings page: transcripts on or off, the speech models, the microphone switch for the popup, the Downloads copy, and updates. |
-| `src/library/` | Lists, opens, exports and deletes sessions, shows transcript state, and recovers interrupted recordings. |
-| `src/session/` | One recording: player and transcript, seek-on-click, follow, search, script toggle, `.txt` download, and transcribing a recording after the fact. |
+| `src/library/` | Lists, opens, exports and deletes sessions, shows transcript state and bookmark counts, searches titles and every transcript, frees up space by keeping a video only in Downloads, and recovers interrupted recordings. |
+| `src/session/` | One recording: player and transcript, seek-on-click, follow, search, script toggle, bookmarks, `.txt` and subtitle (`.srt`, `.vtt`) downloads, and transcribing a recording after the fact. Opened with `?t=<ms>&q=<query>` from a library search. |
 | `src/setup/` | First-run setup, opened on install: microphone, transcripts or recording only, then (for transcripts) companion install commands with a live check and the speech-model choice. |
 | `src/content/` | Scripts injected into a meeting tab while it is recorded: the meeting's mute state and who is speaking. |
 | `src/permissions/` | One-time microphone grant (see "Microphone" below). |
@@ -96,7 +96,11 @@ sessions/<id>/
   session.json     metadata, rewritten on every chunk
   transcript.json  once transcribed
   speakers.json    who was speaking when, for recordings of Meet or Teams
+  bookmarks.json   moments bookmarked while recording
 ```
+
+`session.json`'s `browserCopyRemovedAt` is set when the media file was removed to save
+space (see "Disk space"); the folder then holds everything but the video.
 
 `<id>` is `YYYY-MM-DD_HHMMSS_<title-slug>`, in local time, so it sorts
 chronologically. A title with no Latin characters, such as a Hindi one, slugs to
@@ -430,6 +434,7 @@ Settings, stored in `chrome.storage.local` and edited on `settings.html`:
 | `micSwitchInPopup` | off (default): the microphone is always recorded and the popup does not mention it. On: the popup shows "Include my microphone". |
 | `mic` | the popup switch's state; ignored while `micSwitchInPopup` is off |
 | `autoExport` | on (default) or off: copy recordings and transcripts to Downloads |
+| `keepInBrowser` | on (default) or off. Off, and with `autoExport` on, a finished recording's video is removed from the browser once its Downloads copy is verified (see "Disk space"). |
 | `transcribe` | on (default) or off. Off, Dohra is a plain recorder: the background never contacts the companion for a recording, and no transcript or "not transcribed" state is written. A transcript can still be made later from the recording's page. Switchable in the popup, Settings, and setup ("No, just record"). |
 
 Settings from earlier versions (mode, quality, language) are ignored. `transcribe` was
@@ -506,6 +511,61 @@ meeting redesign means the selectors need updating, and lines simply fall back t
 "Them". The e2e meeting page has three tiles, one with an animating indicator, and the
 test checks both the timeline and the names on the transcript's lines.
 
+### Bookmarks
+
+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> (the `add-bookmark` command) or the
+popup's **Bookmark this moment** sends `bookmark` to the background, which stamps the
+recorded time (`liveDuration`, pauses excluded) and adds it to `bookmarks.json`
+([lib/bookmarks.ts](src/lib/bookmarks.ts)); presses within 3 s of an existing bookmark
+are one bookmark. The count goes into the active recording for the popup, and the
+badge shows ★ for a moment. The session page lists bookmarks under the player and
+marks the transcript line each falls in (`lineAt`); the library shows the count.
+
+### Subtitles and search
+
+[lib/subtitles.ts](src/lib/subtitles.ts) turns transcript lines into cues: empty lines
+dropped, each cue ending before the next line of the same stream and lasting at least
+1 s. SRT puts the speaker before the text; WebVTT uses a voice tag (`<v Name>`) with
+`<`, `>` and `&` escaped. Downloads are named after the session, so a player finds them
+beside a video copied with the same name.
+
+The library's search ([lib/search.ts](src/lib/search.ts)) matches a recording when every
+word of the query is in its title or in one transcript line (in either script via
+`searchKey`, plus the speaker's label). The library already reads each transcript for
+its state, and now keeps the lines in memory for this; it shows up to three matching
+lines per recording, and a click opens `session.html?id=…&t=<ms>&q=<query>`, which
+seeks there and filters the transcript.
+
+### Echo without headphones
+
+Every time the background rewrites `transcript.json`, `dropEchoes`
+([lib/echo.ts](src/lib/echo.ts)) leaves out a `me` line that overlaps a `them` line in
+time (±1.5 s) and has at least 60% of its words (lowercased, punctuation stripped) in
+the overlapping `them` lines; lines of one word are kept. The companion's copy keeps
+every line, so the rule can change without losing anything.
+
+### Disk space
+
+With `unlimitedStorage`, `navigator.storage.estimate()`'s quota follows the disk's free
+space (measured equal to `df` within 0.2%), so quota − usage is what is left
+([lib/disk.ts](src/lib/disk.ts)). The popup divides it by the hourly size at this
+screen's resolution and by the copies kept (2 with the Downloads copy and
+`keepInBrowser`, else 1), and warns below two hours. The library shows used and free
+space.
+
+Removing a video from the browser requires a verified Downloads copy
+([lib/downloads.ts](src/lib/downloads.ts)): an item in the browser's download history
+that is complete, still exists, ends with `Dohra/<id>/<media file>`, and has exactly
+the recording's size. The library's **Free up space** checks this, asks, and sends the
+storage worker `drop-media`, which deletes the media file and sets
+`browserCopyRemovedAt`. With `keepInBrowser` off, the background checks the same after
+exporting and tells the offscreen recorder to do it before shutting down. Such a
+session's page shows the Downloads path and **Show in Downloads**
+(`chrome.downloads.show`) instead of the player, and cannot be transcribed again.
+
+The background also copies `speakers.json` and `bookmarks.json` to Downloads after the
+recording, beside `recording.webm` and `session.json`.
+
 ## Updates
 
 Chrome never updates an extension loaded with **Load unpacked**; it only reads the
@@ -562,7 +622,11 @@ companion.
   - reading a meeting's mic button labels (`meeting-mic.test.ts`);
   - speaker detection: names from tile texts, the activity tracker's window and hold,
     and naming lines from a timeline (`meeting-speakers.test.ts`);
-  - version comparison for updates (`update.test.ts`).
+  - version comparison for updates (`update.test.ts`);
+  - subtitle cues and the SRT and WebVTT formats (`subtitles.test.ts`);
+  - library search across titles and transcript lines (`search.test.ts`);
+  - echo detection (`echo.test.ts`);
+  - recording time left on the disk (`disk.test.ts`).
 - **Companion tests** (`cd companion && go test -race ./...`) cover:
   - the protocol framing and request handling;
   - quiet-point chunking;
@@ -582,21 +646,28 @@ companion.
   0. the setup page: microphone and companion shown done, "No, just record" hiding the
      transcript steps, and a Small model downloaded from the page and made active;
   1. a paused video recording with the microphone, stopped from the popup; the popup
-     offers no format or language choice and has transcripts on by default;
+     offers no format or language choice and has transcripts on by default; two
+     moments bookmarked (a double press counts once) at the right recorded times, and
+     `bookmarks.json` copied to Downloads;
   1b. a meeting at `meet.google.com` (served locally over HTTPS, see "Following the
      meeting's mute"): muting in the meeting and in Dohra silences the microphone;
      speakers are read from three participant tiles (one with an animating indicator)
-     into `speakers.json`, and the transcript's meeting lines carry that name;
+     into `speakers.json` (also copied to Downloads), and the transcript's meeting
+     lines carry that name;
   2. a recording ended by closing the tab, with transcripts off: no transcript is made
      or attempted;
   3. a browser killed with `SIGKILL` mid-recording and then recovered;
   4. the library listing them;
   5. live transcription of a page playing speech (whisper.cpp's public-domain JFK
      sample) through the real companion with the Small model; the session page shows
-     every line, seeks on click and filters on search;
+     every line, seeks on click, filters on search, and downloads `.srt` and `.vtt`;
+     the library's search finds the line inside the transcript, and clicking it opens
+     the recording at that moment;
   6. transcribing a recording again from its session page, after removing its
      transcript;
-  7. importing an audio file from disk, with a visible percentage while it transcribes.
+  7. importing an audio file from disk, with a visible percentage while it transcribes;
+  8. **Free up space** on a recording copied to Downloads: the video leaves the
+     browser, the Downloads copy is untouched, and the session page points to it.
 
   Each recording is checked for duration, seeking, audible audio, video size, raw-file
   cleanup, and the SHA-256 of the Downloads copy. The Downloads copy is also played

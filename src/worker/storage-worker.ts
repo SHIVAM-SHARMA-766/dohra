@@ -101,6 +101,16 @@ async function update(sessionId: string, patch: Partial<SessionMeta>): Promise<S
   return meta;
 }
 
+/** Removes the media file from the browser and records that it is only in Downloads now. */
+async function dropMedia(sessionId: string): Promise<SessionMeta> {
+  const dir = await sessionDir(sessionId, false);
+  const meta = await readMeta(dir);
+  if (meta.state !== "complete") throw new Error("only a finished recording can be removed from the browser");
+  const name = meta.file ?? FILES.recording;
+  if (await fileExists(dir, name)) await dir.removeEntry(name);
+  return update(sessionId, { browserCopyRemovedAt: new Date().toISOString() });
+}
+
 /**
  * Turns raw.webm into recording.webm: repairs the header (Duration, AlphaMode), copies
  * the rest across, and hashes the result. Safe to re-run if interrupted, since raw.webm is only removed
@@ -188,6 +198,8 @@ function handle(req: WorkerRequest): Promise<SessionMeta> {
       return update(req.sessionId, req.patch);
     case "finalize":
       return finalize(req.sessionId, req.patch);
+    case "drop-media":
+      return dropMedia(req.sessionId);
   }
 }
 

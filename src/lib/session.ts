@@ -37,6 +37,12 @@ export interface SessionMeta {
   exportedAt: string | null;
   /** The media file in the folder, when not recording.webm: an imported file keeps its own format. */
   file?: string;
+  /**
+   * When the video was removed from the browser to save space, after its Downloads
+   * copy was verified; it is then only in Downloads/Dohra/<id>/. Transcript,
+   * bookmarks and details stay in the library.
+   */
+  browserCopyRemovedAt?: string | null;
 }
 
 export const FILES = {
@@ -45,6 +51,7 @@ export const FILES = {
   meta: "session.json",
   transcript: "transcript.json",
   speakers: "speakers.json", // who spoke when, read from the meeting page
+  bookmarks: "bookmarks.json", // moments marked while recording
 } as const;
 
 /** The name of a session's media file. */

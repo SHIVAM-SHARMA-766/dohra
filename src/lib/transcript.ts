@@ -96,6 +96,23 @@ export async function writeTranscript(t: Transcript): Promise<void> {
   await writable.close();
 }
 
+/** A JSON file in a session folder, or null if it is missing or unreadable. */
+export async function readSessionJson<T>(id: string, name: string): Promise<T | null> {
+  try {
+    const dir = await sessionDir(id);
+    return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text()) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeSessionJson(id: string, name: string, value: unknown): Promise<void> {
+  const dir = await sessionDir(id, true);
+  const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
+  await writable.write(JSON.stringify(value, null, 2) + "\n");
+  await writable.close();
+}
+
 export async function readSpeakers(id: string): Promise<SpeakerTimeline | null> {
   try {
     const dir = await sessionDir(id);

@@ -19,6 +19,12 @@ export interface Settings {
   autoExport: boolean;
   /** Transcribe recordings live. Off, Dohra only records and needs no companion. */
   transcribe: boolean;
+  /**
+   * Keep each video in the browser's library too. Off, a finished recording's video
+   * is removed from the browser once its Downloads copy is verified, halving the
+   * disk space it takes. Only applies while autoExport is on.
+   */
+  keepInBrowser: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -26,6 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mic: true,
   autoExport: true,
   transcribe: true,
+  keepInBrowser: true,
 };
 
 /** Whether the next recording includes the microphone. */
@@ -74,6 +81,7 @@ export async function loadSettings(): Promise<Settings> {
     mic: stored.mic ?? DEFAULT_SETTINGS.mic,
     autoExport: stored.autoExport ?? DEFAULT_SETTINGS.autoExport,
     transcribe: stored.transcribe ?? DEFAULT_SETTINGS.transcribe,
+    keepInBrowser: stored.keepInBrowser ?? DEFAULT_SETTINGS.keepInBrowser,
   };
 }
 

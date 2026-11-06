@@ -22,6 +22,11 @@ import { isMeetingHost } from "../lib/meeting-mic";
 import type { SpeakingTile } from "../lib/meeting-speakers";
 import { sessionId, type SessionMeta } from "../lib/session";
 import { loadSettings, micEnabled } from "../lib/settings";
+import { addBookmark } from "../lib/bookmarks";
+import { FILES } from "../lib/session";
+import { readSessionJson } from "../lib/transcript";
+import { downloadsCopy } from "../lib/downloads";
+import { downloadJson } from "./exports";
 import * as speakers from "./speakers";
 import * as transcriber from "./transcriber";
 import * as updater from "./updater";
@@ -216,6 +221,17 @@ async function updateMic(patch: Partial<MicState>, fromTab?: number): Promise<vo
   }
 }
 
+/** Marks the current moment of the recording; the badge shows a brief ★. */
+async function bookmark(): Promise<number> {
+  const active = await getActive();
+  if (!active || (active.status !== "recording" && active.status !== "paused")) throw new Error("nothing is being recorded");
+  const list = await addBookmark(active.sessionId, liveDuration(active.progress));
+  await patchActive({ bookmarks: list.length });
+  await chrome.action.setBadgeText({ text: "★" });
+  setTimeout(() => void getActive().then(updateBadge), 1_200);
+  return list.length;
+}
+
 async function stop(): Promise<void> {
   const active = await getActive();
   if (!active || active.status === "finalizing" || active.status === "exporting") return;
@@ -242,6 +258,8 @@ async function handleRequest(msg: BackgroundRequest, sender: chrome.runtime.Mess
     case "pause":
     case "resume":
       return pauseOrResume(msg.type);
+    case "bookmark":
+      return bookmark();
     case "mic-manual":
       return updateMic({ manual: msg.muted });
     case "meeting-mic":
@@ -296,12 +314,22 @@ async function exportFiles(files: ExportFile[]): Promise<void> {
 
 async function finished(meta: SessionMeta, files: ExportFile[]): Promise<void> {
   let exported = false;
+  let dropMedia = false;
   try {
     const settings = await loadSettings();
     if (settings.autoExport && files.length > 0) {
       await patchActive({ status: "exporting" });
       await exportFiles(files);
       exported = true;
+      // Small files written beside the recording during it.
+      for (const name of [FILES.speakers, FILES.bookmarks]) {
+        const value = await readSessionJson(meta.id, name);
+        if (value) await downloadJson(meta.id, name, value);
+      }
+      if (!settings.keepInBrowser && meta.state === "complete") {
+        dropMedia = (await downloadsCopy(meta)) !== null;
+        if (!dropMedia) await setLastError("Kept the video in the browser too: its copy in Downloads could not be verified.");
+      }
     }
   } catch (e) {
     await setLastError(`Saved in Dohra's library, but copying to Downloads failed: ${errorMessage(e)}`);
@@ -310,7 +338,7 @@ async function finished(meta: SessionMeta, files: ExportFile[]): Promise<void> {
   else if (meta.error) await setLastError(`Saved with a warning: ${meta.error}`);
 
   try {
-    await toOffscreen({ target: "offscreen", type: "exported", ok: exported });
+    await toOffscreen({ target: "offscreen", type: "exported", ok: exported, dropMedia });
   } finally {
     await closeOffscreen();
     await setActive(null);
@@ -374,6 +402,10 @@ chrome.runtime.onInstalled.addListener(({ reason }) => {
 });
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command === "add-bookmark") {
+    await bookmark().catch(() => {}); // nothing to mark when not recording
+    return;
+  }
   if (command !== "toggle-recording") return;
   try {
     const active = await getActive();

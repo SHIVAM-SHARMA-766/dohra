@@ -13,7 +13,15 @@ import {
 } from "../lib/messages";
 import { hydrateIcons, icon } from "../lib/icons";
 import { formatBytes, formatDuration } from "../lib/session";
-import { loadSettings, micEnabled, saveSettings, type Settings } from "../lib/settings";
+import { copiesKept, freeSpace, LOW_SPACE_MS, recordingTimeLeft, roughDuration } from "../lib/disk";
+import {
+  estimateBytesPerHour,
+  loadSettings,
+  micEnabled,
+  saveSettings,
+  screenResolution,
+  type Settings,
+} from "../lib/settings";
 import { TRANSCRIPTS_KEY, type CompanionInfo, type TranscriptStatus } from "../lib/transcript";
 import { UPDATE_KEY, type UpdateStatus } from "../lib/update";
 
@@ -119,6 +127,17 @@ async function showCompanion(): Promise<void> {
   el.append(link);
 }
 
+/** Warns before starting when the disk has room for less than LOW_SPACE_MS of recording. */
+async function checkSpace(): Promise<void> {
+  const { width, height } = screenResolution();
+  const left = recordingTimeLeft(await freeSpace(), estimateBytesPerHour(width, height), copiesKept(settings));
+  $<HTMLElement>("space-help").hidden = left >= LOW_SPACE_MS;
+  $<HTMLElement>("space-text").textContent =
+    left < 60_000
+      ? "This disk is almost full: there is no room for a recording."
+      : `This disk has room for only about ${roughDuration(left)} of recording.`;
+}
+
 async function persistSettings(): Promise<void> {
   const wasTranscribing = settings.transcribe;
   settings = {
@@ -148,6 +167,7 @@ async function initIdle(): Promise<void> {
   transcribeCheck.addEventListener("change", () => void persistSettings());
   await renderSummary();
   if (settings.transcribe) void showCompanion();
+  void checkSpace();
 }
 
 async function startRecording(): Promise<void> {
@@ -206,6 +226,19 @@ function renderMic(): void {
   setButton($<HTMLButtonElement>("mic-toggle"), "mic", mic.manual ? "Unmute" : "Mute");
 }
 
+function renderBookmark(): void {
+  const b = $<HTMLButtonElement>("bookmark");
+  b.disabled = active?.status !== "recording" && active?.status !== "paused";
+  setButton(b, "bookmark", "Bookmark this moment");
+  const n = active?.bookmarks ?? 0;
+  if (n > 0) {
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = ` · ${n} marked`;
+    b.append(count);
+  }
+}
+
 function setButton(b: HTMLButtonElement, iconName: string, text: string): void {
   b.replaceChildren(icon(iconName), text);
 }
@@ -241,6 +274,7 @@ function render(): void {
   else setButton(pauseButton, "pause", "Pause");
   setButton(stopButton, "stop", "Stop");
   renderMic();
+  renderBookmark();
 
   tick();
   if (active.status === "recording") timer = window.setInterval(tick, 500);
@@ -274,6 +308,9 @@ async function main(): Promise<void> {
     if (e.key === "Enter") void startRecording();
   });
   stopButton.addEventListener("click", () => void request({ target: "background", type: "stop" }).catch((e) => showError(String(e))));
+  $<HTMLButtonElement>("bookmark").addEventListener("click", () => {
+    void request({ target: "background", type: "bookmark" }).catch((e) => showError(String(e)));
+  });
   $<HTMLButtonElement>("mic-toggle").addEventListener("click", () => {
     const muted = !active?.mic?.manual;
     void request({ target: "background", type: "mic-manual", muted }).catch((e) => showError(String(e)));
@@ -286,6 +323,7 @@ async function main(): Promise<void> {
     ["open-library", "library.html"],
     ["open-settings", "settings.html"],
     ["open-update", "settings.html"],
+    ["open-space", "library.html"],
     ["allow-mic", "permissions.html"],
   ] as const) {
     $<HTMLAnchorElement>(id).addEventListener("click", (e) => {

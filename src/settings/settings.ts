@@ -14,6 +14,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const micSwitch = $<HTMLInputElement>("mic-switch");
 const autoExport = $<HTMLInputElement>("auto-export");
 const transcribe = $<HTMLInputElement>("transcribe");
+const keepInBrowser = $<HTMLInputElement>("keep-in-browser");
 
 async function save(): Promise<void> {
   const settings = await loadSettings();
@@ -22,7 +23,10 @@ async function save(): Promise<void> {
     micSwitchInPopup: micSwitch.checked,
     autoExport: autoExport.checked,
     transcribe: transcribe.checked,
+    keepInBrowser: keepInBrowser.checked,
   });
+  // Without the Downloads copy, the browser's is the only one.
+  keepInBrowser.disabled = !autoExport.checked;
   $<HTMLElement>("model-settings").hidden = !transcribe.checked;
   $<HTMLElement>("saved").textContent = "Saved.";
   setTimeout(() => ($<HTMLElement>("saved").textContent = ""), 1500);
@@ -189,6 +193,9 @@ async function main(): Promise<void> {
   micSwitch.checked = settings.micSwitchInPopup;
   autoExport.checked = settings.autoExport;
   transcribe.checked = settings.transcribe;
+  keepInBrowser.checked = settings.keepInBrowser;
+  keepInBrowser.disabled = !settings.autoExport;
+  keepInBrowser.addEventListener("change", () => void save());
   $<HTMLElement>("model-settings").hidden = !settings.transcribe;
   micSwitch.addEventListener("change", () => void save());
   autoExport.addEventListener("change", () => void save());

@@ -26,6 +26,16 @@
       <div class="layout">
         <section class="player">
           <video id="media" controls preload="metadata"></video>
+          <div id="video-elsewhere" class="video-elsewhere card" hidden>
+            <span class="section-icon big"><i data-icon="folder"></i></span>
+            <p>To save space, this video is kept only in your Downloads folder:</p>
+            <code id="video-path"></code>
+            <button id="show-video" class="small"><i data-icon="folder"></i>Show in Downloads</button>
+          </div>
+          <div id="bookmarks" class="bookmarks card" hidden>
+            <h3><i data-icon="bookmark"></i>Bookmarks</h3>
+            <div id="bookmark-list" class="bookmark-list"></div>
+          </div>
         </section>
 
         <section class="transcript card" aria-label="Transcript">
@@ -60,6 +70,12 @@
           <ol id="lines" class="lines"></ol>
           <div class="transcript-actions">
             <button id="download-txt" class="small" hidden><i data-icon="download"></i>Download .txt</button>
+            <button id="download-srt" class="small" hidden title="Captions for VLC, mpv and most players">
+              <i data-icon="download"></i>Subtitles .srt
+            </button>
+            <button id="download-vtt" class="small" hidden title="Captions for browsers and web players">
+              <i data-icon="download"></i>Subtitles .vtt
+            </button>
           </div>
         </section>
       </div>

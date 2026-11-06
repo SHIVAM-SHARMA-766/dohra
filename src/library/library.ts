@@ -6,7 +6,17 @@ import { hydrateIcons, icon } from "../lib/icons";
 import { ACTIVE_KEY, errorMessage, type ActiveRecording } from "../lib/messages";
 import { EXPORT_DIR, FILES, formatBytes, formatDuration, mediaFileName, type SessionMeta } from "../lib/session";
 import { deleteSession, importMedia, listSessions, recordingFile, StorageWorker } from "../lib/storage";
-import { readTranscript, TRANSCRIPTS_KEY, type TranscriptState, type TranscriptStatus } from "../lib/transcript";
+import { readBookmarks } from "../lib/bookmarks";
+import { downloadsCopy } from "../lib/downloads";
+import { matchSession, type SessionMatch } from "../lib/search";
+import {
+  readTranscript,
+  speakerLabel,
+  TRANSCRIPTS_KEY,
+  type TranscriptLine,
+  type TranscriptState,
+  type TranscriptStatus,
+} from "../lib/transcript";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -19,6 +29,9 @@ let sessions: SessionMeta[] = [];
 let activeId: string | null = null;
 let transcriptStates: Record<string, TranscriptState | undefined> = {};
 let transcriptStatuses: Record<string, TranscriptStatus> = {};
+/** Every transcript's lines, for searching inside them. */
+let transcriptLines: Record<string, TranscriptLine[]> = {};
+let bookmarkCounts: Record<string, number> = {};
 
 function showNotice(text: string | null): void {
   notice.textContent = text ?? "";
@@ -54,14 +67,19 @@ async function recoverInterrupted(): Promise<number> {
 }
 
 async function updateUsage(): Promise<void> {
-  const { usage = 0 } = await navigator.storage.estimate();
-  $<HTMLElement>("usage").textContent = `${formatBytes(usage)} used`;
+  const { usage = 0, quota = 0 } = await navigator.storage.estimate();
+  // With unlimitedStorage the quota follows the disk's free space.
+  $<HTMLElement>("usage").textContent = `${formatBytes(usage)} used · ${formatBytes(Math.max(0, quota - usage))} free`;
 }
 
 // ---- actions ------------------------------------------------------------------------
 
-function open(s: SessionMeta): void {
-  location.href = `session.html?id=${encodeURIComponent(s.id)}`;
+/** Opens a recording, optionally playing from `atMs` with its transcript filtered by `query`. */
+function open(s: SessionMeta, atMs?: number, query?: string): void {
+  const params = new URLSearchParams({ id: s.id });
+  if (atMs !== undefined) params.set("t", String(atMs));
+  if (query) params.set("q", query);
+  location.href = `session.html?${params}`;
 }
 
 function download(url: string, filename: string): Promise<void> {
@@ -100,6 +118,36 @@ async function exportSession(s: SessionMeta): Promise<void> {
   } finally {
     worker.terminate();
   }
+}
+
+/**
+ * Removes the video from the browser once its Downloads copy is verified, keeping
+ * the transcript, bookmarks and details in the library.
+ */
+async function freeUpSpace(s: SessionMeta): Promise<void> {
+  const copy = await downloadsCopy(s);
+  if (!copy) {
+    throw new Error(
+      `No complete copy of "${s.title}" was found in Downloads/${EXPORT_DIR}/. Save it to Downloads first, then try again.`,
+    );
+  }
+  const ok = confirm(
+    `Remove the video of "${s.title}" from the browser, freeing ${formatBytes(s.bytes)}?\n\n` +
+      `It stays in ${copy.filename}. The transcript and bookmarks stay in Dohra.`,
+  );
+  if (!ok) return;
+  const worker = new StorageWorker();
+  try {
+    await worker.call({ op: "drop-media", sessionId: s.id });
+  } finally {
+    worker.terminate();
+  }
+}
+
+async function showInDownloads(s: SessionMeta): Promise<void> {
+  const copy = await downloadsCopy(s);
+  if (!copy) throw new Error(`The video is no longer in Downloads/${EXPORT_DIR}/${s.id}/; it may have been moved or deleted.`);
+  chrome.downloads.show(copy.id);
 }
 
 /** Copies a picked file into the library, then opens it and starts its transcript. */
@@ -188,19 +236,58 @@ function stateLabel(s: SessionMeta): [string, string] | null {
   if (s.state === "failed") return ["Failed", "bad"];
   if (s.state !== "complete") return ["Unfinished", "bad"];
   if (s.endReason === "recovered") return ["Recovered", "warn"];
+  if (s.browserCopyRemovedAt) return ["In Downloads only", "info"];
   if (s.endReason === "imported") return ["Imported", "info"];
   if (s.endReason === "tab-closed") return ["Tab closed", "warn"];
   return null;
 }
 
-function renderItem(s: SessionMeta): HTMLLIElement {
+/** The transcript lines that matched a search, under the recording's details. */
+function renderMatches(s: SessionMeta, match: SessionMatch, query: string): HTMLElement {
+  const box = el("ol", "matches");
+  for (const { line } of match.lines) {
+    const item = el("li");
+    const row = el("button", "match");
+    row.title = "Play from here";
+    const label = speakerLabel(line);
+    row.append(el("span", "match-time", formatDuration(line.startMs)), ...(label ? [el("span", "match-speaker", label)] : []));
+    row.append(...highlighted(line.text, query));
+    row.addEventListener("click", () => open(s, line.startMs, query));
+    item.append(row);
+    box.append(item);
+  }
+  if (match.total > match.lines.length) {
+    const more = el("li");
+    const link = el("button", "match more", `${match.total - match.lines.length} more in this transcript`);
+    link.addEventListener("click", () => open(s, undefined, query));
+    more.append(link);
+    box.append(more);
+  }
+  return box;
+}
+
+/** Text with the query's first word marked. */
+function highlighted(text: string, query: string): Node[] {
+  const word = query.split(/\s+/)[0] ?? "";
+  const i = word ? text.toLowerCase().indexOf(word) : -1;
+  const body = el("span", "match-text");
+  if (i < 0) {
+    body.textContent = text;
+    return [body];
+  }
+  body.append(text.slice(0, i), el("mark", undefined, text.slice(i, i + word.length)), text.slice(i + word.length));
+  return [body];
+}
+
+function renderItem(s: SessionMeta, match?: SessionMatch, query = ""): HTMLLIElement {
   const li = el("li", "item");
-  const playable = s.state === "complete";
+  const inBrowser = !s.browserCopyRemovedAt;
+  const playable = s.state === "complete" && inBrowser;
 
   const thumb = el("button", `thumb${playable ? "" : " muted"}`);
-  thumb.append(icon(playable ? "play" : "video"));
-  thumb.title = playable ? "Open" : s.title;
-  thumb.disabled = !playable;
+  thumb.append(icon(playable ? "play" : inBrowser ? "video" : "text"));
+  thumb.title = playable ? "Open" : inBrowser ? s.title : "Open the transcript";
+  thumb.disabled = s.state !== "complete";
   thumb.addEventListener("click", () => open(s));
 
   const info = el("div", "info");
@@ -230,9 +317,11 @@ function renderItem(s: SessionMeta): HTMLLIElement {
     metaItem("disk", formatBytes(s.bytes)),
     metaItem(s.mode === "audio" ? "mic" : "video", s.mode === "audio" ? "Audio" : `${s.quality ?? "Video"}`),
     ...(s.mic ? [metaItem("mic", "Mic")] : []),
+    ...(bookmarkCounts[s.id] ? [metaItem("bookmark", `${bookmarkCounts[s.id]} bookmarked`)] : []),
   );
   info.append(meta);
   if (s.error) info.append(el("div", "error-text", s.error));
+  if (match && match.lines.length > 0) info.append(renderMatches(s, match, query));
   const extra: string[] = [];
   if (s.exportedAt) extra.push(`Copied to Downloads/${EXPORT_DIR}/${s.id}/`);
   if (extra.length || s.sha256) {
@@ -255,6 +344,24 @@ function renderItem(s: SessionMeta): HTMLLIElement {
         iconOnly: true,
       }),
     );
+    if (s.exportedAt) {
+      actions.append(
+        button("Free up space: keep the video only in Downloads", (b) => void run(() => freeUpSpace(s), b), {
+          className: "ghost small",
+          iconName: "disk",
+          iconOnly: true,
+        }),
+      );
+    }
+  } else if (s.state === "complete") {
+    actions.append(
+      button("Open", () => open(s), { className: "primary small" }),
+      button("Show in Downloads", (b) => void run(() => showInDownloads(s), b), {
+        className: "ghost small",
+        iconName: "folder",
+        iconOnly: true,
+      }),
+    );
   }
   if (s.id !== activeId) {
     actions.append(button("Delete", (b) => void run(() => remove(s), b), { className: "ghost small", iconName: "trash", iconOnly: true }));
@@ -266,21 +373,36 @@ function renderItem(s: SessionMeta): HTMLLIElement {
 
 function render(): void {
   const query = search.value.trim().toLowerCase();
-  const shown = sessions.filter((s) => !query || s.title.toLowerCase().includes(query));
-  list.replaceChildren(...shown.map(renderItem));
+  const items: HTMLLIElement[] = [];
+  let lineHits = 0;
+  for (const s of sessions) {
+    if (!query) {
+      items.push(renderItem(s));
+      continue;
+    }
+    const match = matchSession(s.title, transcriptLines[s.id] ?? [], query);
+    if (!match) continue;
+    lineHits += match.total;
+    items.push(renderItem(s, match, query));
+  }
+  list.replaceChildren(...items);
   empty.hidden = sessions.length > 0;
-  $<HTMLElement>("count").textContent = sessions.length === 1 ? "1 recording" : `${sessions.length} recordings`;
-  if (sessions.length > 0 && shown.length === 0) list.append(el("li", "hint", "No titles match."));
+  $<HTMLElement>("count").textContent = query
+    ? `${items.length} of ${sessions.length} recordings · ${lineHits} matching ${lineHits === 1 ? "line" : "lines"}`
+    : sessions.length === 1
+      ? "1 recording"
+      : `${sessions.length} recordings`;
+  if (sessions.length > 0 && items.length === 0) list.append(el("li", "hint", "Nothing matches, in titles or transcripts."));
 }
 
 async function loadTranscriptStates(): Promise<void> {
   const { [TRANSCRIPTS_KEY]: live } = await chrome.storage.session.get(TRANSCRIPTS_KEY);
   const statuses = (live as Record<string, TranscriptStatus> | undefined) ?? {};
   transcriptStatuses = statuses;
-  const entries = await Promise.all(
-    sessions.map(async (s) => [s.id, statuses[s.id]?.state ?? (await readTranscript(s.id))?.state] as const),
-  );
-  transcriptStates = Object.fromEntries(entries);
+  const transcripts = await Promise.all(sessions.map(async (s) => [s.id, await readTranscript(s.id)] as const));
+  transcriptStates = Object.fromEntries(transcripts.map(([id, t]) => [id, statuses[id]?.state ?? t?.state]));
+  transcriptLines = Object.fromEntries(transcripts.map(([id, t]) => [id, t?.lines ?? []]));
+  bookmarkCounts = Object.fromEntries(await Promise.all(sessions.map(async (s) => [s.id, (await readBookmarks(s.id)).length] as const)));
 }
 
 async function refresh(): Promise<void> {

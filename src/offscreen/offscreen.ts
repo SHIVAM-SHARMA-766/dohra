@@ -302,13 +302,14 @@ async function exportFiles(meta: SessionMeta): Promise<ExportFile[]> {
   ];
 }
 
-async function exported(ok: boolean): Promise<void> {
+async function exported(ok: boolean, dropMedia: boolean): Promise<void> {
   const r = current;
   exportedUrls.forEach((u) => URL.revokeObjectURL(u));
   exportedUrls = [];
   if (!r) return;
   try {
     if (ok) await r.storage.call({ op: "update", sessionId: r.options.sessionId, patch: { exportedAt: new Date().toISOString() } });
+    if (ok && dropMedia) await r.storage.call({ op: "drop-media", sessionId: r.options.sessionId });
   } finally {
     r.storage.terminate();
     current = null;
@@ -334,7 +335,7 @@ async function handle(msg: OffscreenRequest): Promise<void> {
     case "resume":
       return resume();
     case "exported":
-      return exported(msg.ok);
+      return exported(msg.ok, !!msg.dropMedia);
   }
 }
 

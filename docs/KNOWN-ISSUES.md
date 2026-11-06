@@ -11,10 +11,10 @@ listed here? [Open an issue](https://github.com/SHIVAM-SHARMA-766/dohra/issues).
 | Recording | [Browser tabs only](#browser-tabs-only) | Join the class in the browser | [Roadmap #12](ROADMAP.md#12-stage-5-desktop-apps) |
 | Recording | [Browser pages cannot be recorded](#browser-pages-cannot-be-recorded) | — | — (browser rule) |
 | Recording | ["This tab is being shared" stays visible](#the-sharing-indicator-stays-visible) | — | — (browser rule) |
-| Recording | [Two copies of every recording](#two-copies-of-every-recording) | Turn off the Downloads copy, or delete old recordings | [Roadmap #8](ROADMAP.md#8-disk-space) |
+| Recording | [Videos kept only in Downloads cannot be played in Dohra](#videos-kept-only-in-downloads) | Open the file from Downloads | — |
 | Recording | [Duration after the laptop sleeps](#duration-after-the-laptop-sleeps) | None needed; the file plays | — |
 | Transcripts | [Speaker names need the tiles on screen](#speaker-names-need-the-tiles-on-screen) | Grid or sidebar layout | [Roadmap #1](ROADMAP.md#1-verify-speaker-names-in-real-meetings) |
-| Transcripts | [Echo without headphones](#echo-without-headphones) | Use headphones | [Roadmap #7](ROADMAP.md#7-echo-without-headphones) |
+| Transcripts | [Echo without headphones](#echo-without-headphones) | Use headphones | — (mostly handled since 0.7) |
 | Transcripts | [Misheard words](#misheard-words) | Use a bigger model; click the line to check | — |
 | Transcripts | [Long recordings transcribed afterwards](#long-recordings-transcribed-afterwards) | Keep other tabs light while it runs | [Roadmap #6](ROADMAP.md#6-long-recordings) |
 | Transcripts | [Small and Medium spell Hinglish loosely](#small-and-medium-spell-hinglish-loosely) | Use High | — |
@@ -59,12 +59,13 @@ Pages such as `chrome://` and the Chrome Web Store cannot be captured by any ext
 While recording, the browser shows its own "this tab is being shared" indicator. It
 is shown only to you, and no extension can hide it.
 
-### Two copies of every recording
+### Videos kept only in Downloads
 
-Each recording is kept in the browser's library and copied to `Downloads/Dohra/`,
-about 1.2 GB per hour at 1080p each. Turn off **Copy each recording and transcript to
-Downloads/Dohra** in Settings to keep one, or delete recordings you no longer need
-from the library.
+After **Free up space** (or with *Also keep each video in the browser* off), a
+recording's video lives only in `Downloads/Dohra/<recording>/`. Its transcript,
+bookmarks and search stay in Dohra, but the recording's page cannot play the video or
+transcribe it again: an extension cannot read files from Downloads. Open the file from
+there (**Show in Downloads**), or **Import video** it back to have both.
 
 ### Duration after the laptop sleeps
 
@@ -88,9 +89,10 @@ Keep the meeting in a grid or sidebar layout so the speakers' tiles stay on scre
 
 ### Echo without headphones
 
-Without headphones, your microphone also picks up the class from your speakers, and
-some of the meeting's lines appear a second time as **Me**. Echo cancellation reduces
-this but does not remove it. Headphones avoid it.
+Without headphones, your microphone also picks up the class from your speakers. Since
+0.7, Dohra leaves out **Me** lines that repeat what the meeting said at the same time,
+but a heavily garbled echo can still slip through, and repeating the teacher's exact
+words aloud yourself is treated as an echo. Headphones avoid both.
 
 ### Misheard words
 

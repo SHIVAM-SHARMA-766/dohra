@@ -44,6 +44,8 @@ anyone can take notes; Dohra keeps the whole class so you can go back to it.
 | 🌐 **Works on any site** | Google Meet, Microsoft Teams, Zoom's web client, YouTube Live, or your course's own player. |
 | 🗣️ **Hinglish transcripts** | Hindi in Roman script ("theek hai"), English as English, made on your computer while the class runs. |
 | 👥 **Knows who spoke** | In Meet and Teams, each line is labelled with the speaker's name. |
+| 🔖 **Bookmark what matters** | Press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> during class; jump straight back to it later. |
+| 🔎 **Search every class** | One search box finds a word in any recording's transcript and plays from that line. |
 | 🎬 **Or just a recorder** | Turn transcripts off and Dohra is a simple, full-quality video recorder. |
 | 🔄 **Updates in one click** | Settings checks for new versions and installs them for you. |
 | 💸 **Free and open source** | MIT licensed. Every download is checked against a pinned SHA-256. |
@@ -179,6 +181,13 @@ Every recording gets the best your screen allows, with nothing to configure:
 You can keep using other tabs while recording, and closing the class's tab stops and
 saves the recording.
 
+**Bookmark a moment.** Something important? Press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>
+from any tab, or **Bookmark this moment** in the popup. Bookmarks show up under the
+video and beside the transcript line, one click away.
+
+**Plenty of room.** Before you start, the popup warns if the disk is running out of
+space for a recording.
+
 **Mute follows the meeting.** In Google Meet, Microsoft Teams, Zoom and Webex on the
 web, while you are muted in the meeting your microphone is silent in the recording
 too. The popup's **Mute** button does the same on any site.
@@ -198,7 +207,11 @@ Open a recording to read its transcript beside the video:
 
 - ▶️ **Click any line** to jump the video there; the playing line is highlighted and followed.
 - 🔎 **Search** in either script: `padhenge` also finds `पढ़ेंगे`.
-- 📄 **Download transcript (.txt)** for plain text with timestamps and names.
+- 📄 **Download .txt** for plain text with timestamps and names.
+- 🎞️ **Subtitles .srt / .vtt** play the transcript as captions in VLC, mpv or any
+  player, with speakers' names.
+- 🎧 **No echo, even without headphones**: when your microphone picks up the class
+  from the speakers, those repeated lines are left out automatically.
 - 🧾 **Transcribe this recording** makes a transcript later for anything recorded
   without one.
 - 📥 **Import video** in the library brings in a file you already have (MP4, WebM,
@@ -218,13 +231,18 @@ each person in their own colour. Your own lines are **Me**.
 
 ## Library
 
-**Library** (the grid icon in the popup) lists every recording with its length, size
-and transcript state. Search titles, open, save a copy, delete, or **Import video**.
+**Library** (the grid icon in the popup) lists every recording with its length, size,
+bookmarks and transcript state. **Search** looks through titles *and* every transcript
+— "which class covered BFS?" — showing the matching lines under each recording;
+click one to play from there. Open, save a copy, delete, or **Import video**.
 
 ![The library](docs/images/06-library.png)
 
 Every recording is also copied to your **Downloads** folder, one folder per class, so
-it survives even removing the browser:
+it survives even removing the browser. To save disk space, **Free up space** on a
+recording (or turn off *Also keep each video in the browser* in Settings) keeps the
+video only in Downloads, once that copy is checked; its transcript, bookmarks and
+search stay in the library.
 
 ```
 Downloads/Dohra/2026-10-06_190000_dsa-class/
@@ -232,6 +250,7 @@ Downloads/Dohra/2026-10-06_190000_dsa-class/
   session.json      title, source page, start and end time, duration, SHA-256
   transcript.json   timestamped lines with speakers, once transcribed
   speakers.json     who was speaking when, for Meet and Teams
+  bookmarks.json    the moments you bookmarked
 ```
 
 ## Settings and updates

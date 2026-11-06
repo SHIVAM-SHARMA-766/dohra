@@ -4,19 +4,19 @@ What is being built next for Dohra, in order of priority. Each item says why it
 matters and where it will show up in the app. Known limitations of the current
 version, with workarounds, are in [KNOWN-ISSUES.md](KNOWN-ISSUES.md).
 
-Status: 🔨 in progress · ⏭️ next · 🗓️ later
+Status: ✅ done · 🔨 in progress · ⏭️ next · 🗓️ later
 
 | # | Item | Area | Status |
 |---|---|---|---|
 | 1 | [Verify speaker names in real Meet and Teams meetings](#1-verify-speaker-names-in-real-meetings) | Transcripts | 🔨 |
 | 2 | [Test the companion on Windows and macOS in CI](#2-windows-and-macos-in-ci) | Reliability | 🔨 |
-| 3 | [Subtitles export (.srt and .vtt)](#3-subtitles-export) | Transcripts | ⏭️ |
-| 4 | [Search inside every transcript from the library](#4-search-every-transcript) | Library | ⏭️ |
-| 5 | [Bookmark a moment while recording](#5-bookmarks-while-recording) | Recording | ⏭️ |
+| 3 | [Subtitles export (.srt and .vtt)](#3-subtitles-export) | Transcripts | ✅ 0.7 |
+| 4 | [Search inside every transcript from the library](#4-search-every-transcript) | Library | ✅ 0.7 |
+| 5 | [Bookmark a moment while recording](#5-bookmarks-while-recording) | Recording | ✅ 0.7 |
 | 6 | [Transcribe long recordings without loading them whole](#6-long-recordings) | Transcripts | ⏭️ |
-| 7 | [Drop echoed lines when recording without headphones](#7-echo-without-headphones) | Transcripts | ⏭️ |
-| 8 | [Disk space warnings and a single-copy option](#8-disk-space) | Storage | ⏭️ |
-| 9 | [Signed releases](#9-signed-releases) | Security | ⏭️ |
+| 7 | [Drop echoed lines when recording without headphones](#7-echo-without-headphones) | Transcripts | ✅ 0.7 |
+| 8 | [Disk space warnings and a single-copy option](#8-disk-space) | Storage | ✅ 0.7 |
+| 9 | [Signed releases](#9-signed-releases) | Security | 🔨 |
 | 10 | [Stage 3: summary, key points and plain-English meaning](#10-stage-3-summary-and-meaning) | Revision | 🗓️ |
 | 11 | [Stage 4: live transcript in a side panel](#11-stage-4-live-side-panel) | Recording | 🗓️ |
 | 12 | [Stage 5: desktop apps such as the Zoom app](#12-stage-5-desktop-apps) | Recording | 🗓️ |
@@ -25,6 +25,7 @@ Status: 🔨 in progress · ⏭️ next · 🗓️ later
 
 | Version | What |
 |---|---|
+| 0.7 | Subtitles (.srt, .vtt); search inside every transcript from the library; bookmarks while recording; echoed lines dropped without headphones; low-disk warning and keeping videos only in Downloads |
 | 0.6 | Speaker names from Meet and Teams; transcripts optional (plain recorder mode); one-click updates from Settings |
 | 0.5 | Roman-script Hinglish transcripts; High model (Hindi2Hinglish); Import video; live transcription progress; following the meeting's mute; new design |
 | 0.4 | Speech models (Small, Medium, High) chosen and downloaded in the app; first-run setup page |
@@ -60,9 +61,9 @@ new one is moved in.
 
 ## 3. Subtitles export
 
-**Plan:** a **Download subtitles (.srt / .vtt)** option next to *Download transcript*
-on the recording's page, so the transcript plays as captions in VLC, mpv or any video
-player, with speakers' names.
+✅ **Done in 0.7.** **Subtitles .srt** and **.vtt** next to *Download .txt* on the
+recording's page play the transcript as captions in VLC, mpv or any video player,
+with speakers' names (in front of the text in SRT, as WebVTT voice tags in VTT).
 
 ![The recording's page, where the subtitles option will sit](images/07-session.png)
 
@@ -70,17 +71,17 @@ player, with speakers' names.
 
 The library searches titles today; each recording's page searches its own transcript.
 
-**Plan:** make the library's search look inside every transcript too, listing the
-matching lines under each recording and opening the video at that moment — "which
-class covered BFS?" answered in one search.
+✅ **Done in 0.7.** The library's search looks inside every transcript too (in either
+script, and by speaker), lists the matching lines under each recording, and opens the
+video at that line.
 
 ![The library and its search box](images/06-library.png)
 
 ## 5. Bookmarks while recording
 
-**Plan:** a hotkey and a popup button that mark "important" at the current moment.
-Bookmarks appear as markers on the recording's timeline and in the transcript, for
-jumping straight to what mattered during revision.
+✅ **Done in 0.7.** <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> or **Bookmark this
+moment** in the popup marks the current moment. Bookmarks appear under the video and
+beside the transcript line, and the library shows how many a recording has.
 
 ![The popup while recording, where a Bookmark button will sit](images/05-popup-recording.png)
 
@@ -97,16 +98,19 @@ recording transcribes as smoothly as a short one.
 Without headphones, the microphone also hears the class from the speakers, and the
 same words can appear twice: once from the meeting and once as **Me**.
 
-**Plan:** drop a microphone line when it matches what the meeting said at the same
-moment.
+✅ **Done in 0.7.** A microphone line is left out of the transcript when it overlaps a
+meeting line in time and most of its words are in it. Your own questions, which share
+few words with what the teacher is saying, are kept.
 
 ## 8. Disk space
 
 Each recording is kept in the browser and copied to Downloads, about 1.2 GB per hour
 at 1080p, twice.
 
-**Plan:** show free space before recording and warn when it runs low, and offer to
-keep only the Downloads copy once it is verified.
+✅ **Done in 0.7.** The popup warns when the disk has room for less than two hours of
+recording, and the library shows the free space. **Free up space** on a recording, or
+turning off *Also keep each video in the browser* in Settings, keeps the video only in
+Downloads once that copy is verified; the transcript, bookmarks and search stay.
 
 ## 9. Signed releases
 

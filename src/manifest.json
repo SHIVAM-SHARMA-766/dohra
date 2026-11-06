@@ -39,6 +39,12 @@
         "default": "Alt+Shift+R"
       },
       "description": "Start or stop recording the current tab"
+    },
+    "add-bookmark": {
+      "suggested_key": {
+        "default": "Alt+Shift+B"
+      },
+      "description": "Bookmark this moment in the recording"
     }
   }
 }
