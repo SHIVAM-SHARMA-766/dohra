@@ -20,6 +20,7 @@ listed here? [Open an issue](https://github.com/SHIVAM-SHARMA-766/dohra/issues).
 | Transcripts | [Small and Medium spell Hinglish loosely](#small-and-medium-spell-hinglish-loosely) | Use High | — |
 | Updates | [One-click update needs the companion and a usual browser install](#one-click-update-needs-the-companion) | Update by hand | — |
 | Updates | [First update to 0.6 is by hand](#first-update-to-06-is-by-hand) | Update once by hand | — (one time) |
+| Updates | [Signatures are checked from 0.7 on](#signatures-are-checked-from-07-on) | Update to 0.7 | — (one time) |
 | Other | [Chromium browsers only](#chromium-browsers-only) | Use Chrome, Edge or Brave | — |
 | Other | [Course terms of use](#course-terms-of-use) | Check before recording | — |
 
@@ -139,6 +140,12 @@ and run the companion's install commands again; after that, Settings does it.
 Copies from 0.1 must be removed in `chrome://extensions` and loaded again with **Load
 unpacked**, since 0.2 fixed the extension's ID. The library then starts empty;
 recordings made with 0.1 remain in `Downloads/Dohra/`.
+
+### Signatures are checked from 0.7 on
+
+Since 0.7, the companion installs only releases signed with Dohra's release key.
+Companions from 0.6 do not check signatures yet, so the update from 0.6 to 0.7 relies
+on the release's checksums alone; every update after that is verified.
 
 ## Other
 
