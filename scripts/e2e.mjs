@@ -195,7 +195,9 @@ async function fetchVerified({ url, sha256, path }) {
  * install is, and registers it with the test profile only.
  */
 async function setupCompanion() {
-  run("go", ["build", "-o", companionBin, "."], { cwd: join(root, "companion") });
+  // Stamped with the extension's version, as a release build is, so pages show a real version.
+  const { version } = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+  run("go", ["build", "-ldflags", `-X main.version=${version}`, "-o", companionBin, "."], { cwd: join(root, "companion") });
   const env = { ...process.env, DOHRA_HOME: dohraHome };
   // Undo the previous run's model choice; a cached model becomes a finished partial download.
   await rm(join(dohraHome, "config.json"), { force: true });
@@ -259,10 +261,13 @@ async function openPopup(browser, page, ext) {
   let lastError;
   for (let attempt = 1; attempt <= 5; attempt++) {
     await page.bringToFront();
+    // Under xvfb there is no window manager to hand out focus, and bringToFront does
+    // not always give the window X focus; a click in the page's corner does.
+    await page.mouse.click(2, 2).catch(() => {});
     // The action is ignored while the window is still taking focus.
-    await sleep(500);
+    await sleep(500 * attempt);
     await page.triggerExtensionAction(ext);
-    const target = await browser.waitForTarget((t) => t.url().endsWith("/popup.html"), { timeout: 5_000 }).catch((e) => {
+    const target = await browser.waitForTarget((t) => t.url().endsWith("/popup.html"), { timeout: 8_000 }).catch((e) => {
       lastError = e;
       return null;
     });
@@ -571,6 +576,10 @@ async function main() {
     const err1 = (await state(control)).lastError;
     check(!err1, "no error reported", err1 ?? "");
     await verify(browser, ext, one, { endReason: "user", durationS: [11, 13.5], exported: true });
+
+    // Let the companion finish scenario 1's transcript first: whisper.cpp takes every
+    // core while it works, and a starved browser opens the popup too slowly.
+    if (TRANSCRIBE) await waitForTranscript(control, one, 300_000).catch(() => {});
 
     console.log("\n1b. meeting mute silences the recorded microphone");
     const meet = await browser.newPage();
