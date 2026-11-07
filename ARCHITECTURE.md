@@ -618,8 +618,9 @@ key, which never reaches GitHub or CI:
    neither people nor installed copies can see.
 2. On the maintainer's computer, [scripts/sign-release.sh](scripts/sign-release.sh)
    downloads the draft, checks every file against `SHA256SUMS` (and that it lists them
-   all), signs it with [companion/tools/sign](companion/tools/sign/main.go) (key file:
-   base64 of the 32-byte seed, mode 0600), verifies the signature against `releaseKey`
+   all), signs it with [companion/tools/sign](companion/tools/sign/main.go) (key: base64
+   of the 32-byte seed, from a 0600 file or `DOHRA_RELEASE_SIGNING_KEY_B64` in the
+   environment), verifies the signature against `releaseKey`
    in the source, uploads `SHA256SUMS.sig`, and publishes the release as latest.
 3. The companion refuses a release whose signature is missing ("not signed yet") or
    does not verify.

@@ -396,6 +396,8 @@ computer, sign and publish it:
 
 ```sh
 scripts/sign-release.sh v0.7.0 /path/to/dohra-release.key
+# or, with the key in a credentials file as DOHRA_RELEASE_SIGNING_KEY_B64:
+set -a; . path/to/.env; set +a; scripts/sign-release.sh v0.7.0
 ```
 
 It checks every file against `SHA256SUMS`, signs that file with the release key (an

@@ -9,17 +9,24 @@
 # SHA256SUMS.sig, and publishes the release. Installed copies update only to a
 # release signed this way (companion/internal/update).
 #
-# The key file defaults to $DOHRA_RELEASE_KEY. It stays on this computer: never
-# commit it, and keep a backup somewhere safe, since releases cannot be signed
-# without it. Needs gh (logged in), sha256sum and Go.
+# The key comes from, in order: the file given as the second argument, the file
+# named by $DOHRA_RELEASE_KEY, or the key itself in $DOHRA_RELEASE_SIGNING_KEY_B64
+# (as kept in a credentials .env: `set -a; . path/to/.env; set +a`). It stays on
+# this computer: never commit it, and keep a backup somewhere safe, since releases
+# cannot be signed without it. Needs gh (logged in), sha256sum and Go.
 set -eu
 
 repo=SHIVAM-SHARMA-766/dohra
 tag=${1:?usage: scripts/sign-release.sh <tag> [private-key-file]}
-key=${2:-${DOHRA_RELEASE_KEY:?set DOHRA_RELEASE_KEY or pass the private key file}}
 root=$(cd "$(dirname "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+key=${2:-${DOHRA_RELEASE_KEY:-}}
+if [ -z "$key" ]; then
+  : "${DOHRA_RELEASE_SIGNING_KEY_B64:?pass the private key file, or set DOHRA_RELEASE_KEY or DOHRA_RELEASE_SIGNING_KEY_B64}"
+  key="$work/release.key"
+  (umask 077 && printf '%s\n' "$DOHRA_RELEASE_SIGNING_KEY_B64" > "$key")
+fi
 
 echo "Downloading $tag"
 gh release download "$tag" --repo "$repo" --dir "$work" --pattern '*'
